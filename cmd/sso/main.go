@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/bmstu-itstech/sso/internal/app"
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/logs"
 	"log"
@@ -18,7 +19,9 @@ func main() {
 	logger := logs.NewLogger(cfg.ENV)
 	logger.Info("Hello world")
 
-	// TODO: logger
+	application := app.New(logger, cfg.GRPC.Port)
+
+	application.GRPCSrv.MustRun()
 
 	// TODO: server
 
