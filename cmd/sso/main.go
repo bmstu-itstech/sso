@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/bmstu-itstech/sso/internal/config"
+	"github.com/bmstu-itstech/sso/internal/logs"
 	"log"
 )
 
@@ -11,7 +12,12 @@ func main() {
 		log.Fatal(err)
 	}
 	cfg := config.GetConfig()
-	fmt.Println(cfg)
+	if cfg.ENV == "local" {
+		fmt.Println(cfg)
+	}
+	logger := logs.NewLogger(cfg.ENV)
+	logger.Info("Hello world")
+
 	// TODO: logger
 
 	// TODO: server

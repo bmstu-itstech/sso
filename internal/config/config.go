@@ -6,6 +6,7 @@ import (
 )
 
 type Config struct {
+	ENV      string
 	GRPC     GRPCConfig
 	Postgres PostgresConfig
 	JWT      JWTConfig
@@ -37,6 +38,7 @@ func InitConfig() error {
 
 func GetConfig() *Config {
 	return &Config{
+		ENV: viper.GetString("ENV"),
 		GRPC: GRPCConfig{
 			Port:    viper.GetInt("GRPC_PORT"),
 			Timeout: viper.GetDuration("GRPC_TIMEOUT"),
