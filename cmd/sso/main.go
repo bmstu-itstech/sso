@@ -6,6 +6,10 @@ import (
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/logs"
 	"log"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -17,13 +21,20 @@ func main() {
 		fmt.Println(cfg)
 	}
 	logger := logs.NewLogger(cfg.ENV)
-	logger.Info("Hello world")
+	logger.Info("Server started")
 
-	application := app.New(logger, cfg.GRPC.Port)
+	application := app.New(logger, *cfg)
 
-	application.GRPCSrv.MustRun()
+	go application.GRPCSrv.MustRun()
 
-	// TODO: server
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	// TODO: поднять сервер
+	sign := <-stop
+
+	logger.Info("Server stopped by signal", slog.String("signal", sign.String()))
+
+	application.GRPCSrv.Stop()
+
+	logger.Info("Server stopped")
 }

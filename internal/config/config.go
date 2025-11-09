@@ -45,7 +45,7 @@ func GetConfig() *Config {
 		},
 		Postgres: PostgresConfig{
 			Host:     viper.GetString("POSTGRES_HOST"),
-			Port:     viper.GetInt("POSTGRES_PORT"),
+			Port:     viper.GetInt("POSTGRES_EXTERNAL_PORT"),
 			DB:       viper.GetString("POSTGRES_DB"),
 			UserName: viper.GetString("POSTGRES_USER"),
 			Password: viper.GetString("POSTGRES_PASSWORD"),
