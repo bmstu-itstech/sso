@@ -14,7 +14,6 @@ type App struct {
 	GRPCSrv *grpcapp.App
 }
 
-// New TODO: погумай где инициализировать хранилища, сервисы и прочее
 func New(logger *slog.Logger, cfg config.Config) *App {
 	repos, err := repository.NewPostgresDB(cfg.Postgres)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
+	"github.com/bmstu-itstech/sso/internal/lib"
 	"github.com/bmstu-itstech/sso/internal/lib/jwt"
 	"github.com/bmstu-itstech/sso/internal/services/storage"
 	"golang.org/x/crypto/bcrypt"
@@ -25,7 +26,7 @@ type Auth struct {
 }
 
 type UserSaver interface {
-	SaveUser(ctx context.Context, login string, password []byte, email, fullName string) (userId int64, err error)
+	SaveUser(ctx context.Context, login string, password []byte, email string, fullName string, userId int64) (err error)
 }
 
 type UserProvider interface {
@@ -57,9 +58,10 @@ func (a *Auth) RegisterNewUser(ctx context.Context, login, password, email, full
 		log.Error("failed to geterate password hash", err)
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
-	// TODO: генерация id и его проверка в DB
-	id, err := a.userSaver.SaveUser(ctx, login, passHash, email, fullName)
-	if err != nil {
+	id := lib.RandoInt64()
+	log.Info("generated user id", slog.Int64("user_id", id))
+
+	if err = a.userSaver.SaveUser(ctx, login, passHash, email, fullName, id); err != nil {
 		log.Error("failed to save user", err)
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
@@ -73,6 +75,7 @@ func (a *Auth) Login(ctx context.Context, appId int32, login string, password st
 	log.Info("logging in")
 
 	user, err := a.userProvider.User(ctx, login)
+	fmt.Println(user)
 
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {

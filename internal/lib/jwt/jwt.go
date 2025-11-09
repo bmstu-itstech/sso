@@ -3,6 +3,7 @@ package jwt
 import (
 	"github.com/bmstu-itstech/sso/internal/domain/models"
 	"github.com/golang-jwt/jwt/v5"
+	"strconv"
 	"time"
 )
 
@@ -10,7 +11,7 @@ func NewToken(user models.User, app models.App, tokenTTL time.Duration) (string,
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	claims := token.Claims.(jwt.MapClaims)
-	claims["uid"] = user.ID
+	claims["uid"] = strconv.FormatInt(user.ID, 10)
 	claims["login"] = user.Login
 	claims["email"] = user.Email
 	claims["exp"] = time.Now().Add(tokenTTL).Unix()
