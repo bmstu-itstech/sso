@@ -117,15 +117,20 @@ func (a *Auth) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err err
 	log.Info("checking user is admin")
 
 	isAdmin, err = a.userProvider.UserIsAdmin(ctx, userId)
+	// Поведение без ошибок
 	if err != nil {
-		if errors.Is(err, storage.ErrAppNotFound) {
-			log.Warn("user not found", err)
-			return false, fmt.Errorf("%s: %w", op, errAppNotFoud)
-		}
 		log.Error("failed to check user is admin", err)
-		return false, fmt.Errorf("%s: %w", op, err)
+		return false, nil
 	}
-	log.Info("checked if user is admin", slog.Bool("is_admin", isAdmin))
+	//if err != nil {
+	//	if errors.Is(err, storage.ErrAppNotFound) {
+	//		log.Warn("user not found", err)
+	//		return false, fmt.Errorf("%s: %w", op, errAppNotFoud)
+	//	}
+	//	log.Error("failed to check user is admin", err)
+	//	return false, fmt.Errorf("%s: %w", op, err)
+	//}
+	//log.Info("checked if user is admin", slog.Bool("is_admin", isAdmin))
 
 	return isAdmin, nil
 }
