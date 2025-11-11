@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
 	"github.com/bmstu-itstech/sso/internal/lib"
 	"github.com/bmstu-itstech/sso/internal/lib/jwt"
@@ -17,7 +18,12 @@ var (
 	errAppNotFoud = errors.New("app not found")
 )
 
+const (
+	appIdSSO = 0
+)
+
 type Auth struct {
+	cfg          *config.Config
 	log          *slog.Logger
 	userSaver    UserSaver
 	userProvider UserProvider
@@ -38,26 +44,30 @@ type AppProvider interface {
 	App(ctx context.Context, appId int32) (models.App, error)
 }
 
-func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv AppProvider, tokenTTL time.Duration) *Auth {
+func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv AppProvider, cfg *config.Config) *Auth {
 	return &Auth{
+		cfg:          cfg,
 		log:          log,
 		userSaver:    usrSaver,
 		userProvider: usrProv,
-		tokenTTL:     tokenTTL,
+		tokenTTL:     cfg.JWT.TokenTTL,
 		appProvider:  appProv,
 	}
 }
 
 func (a *Auth) RegisterNewUser(ctx context.Context, login, password, email, fullName string) (userId int64, err error) {
 	const op = "auth.RegisterNewUser"
+
 	log := a.log.With(slog.String("op", op), slog.String("login", login))
 	log.Info("registering user")
+
 	// TODO: что по безопасности
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Error("failed to geterate password hash", err)
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
+
 	id := lib.RandoInt64()
 	log.Info("generated user id", slog.Int64("user_id", id))
 
@@ -94,6 +104,11 @@ func (a *Auth) Login(ctx context.Context, appId int32, login string, password st
 
 	log.Info("user logged in")
 
+	if appId == appIdSSO {
+		token, err = jwt.NewTokenSSO(user, a.cfg.JWT.Secret)
+		return token, err
+	}
+
 	app, err := a.appProvider.App(ctx, appId)
 	if err != nil {
 		log.Error("failed to get app", err)
@@ -112,6 +127,7 @@ func (a *Auth) Login(ctx context.Context, appId int32, login string, password st
 
 func (a *Auth) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error) {
 	const op = "auth.IsAdmin"
+
 	log := a.log.With(slog.String("op", op), slog.Int64("user_id", userId))
 
 	log.Info("checking user is admin")
@@ -122,15 +138,6 @@ func (a *Auth) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err err
 		log.Error("failed to check user is admin", err)
 		return false, nil
 	}
-	//if err != nil {
-	//	if errors.Is(err, storage.ErrAppNotFound) {
-	//		log.Warn("user not found", err)
-	//		return false, fmt.Errorf("%s: %w", op, errAppNotFoud)
-	//	}
-	//	log.Error("failed to check user is admin", err)
-	//	return false, fmt.Errorf("%s: %w", op, err)
-	//}
-	//log.Info("checked if user is admin", slog.Bool("is_admin", isAdmin))
 
 	return isAdmin, nil
 }

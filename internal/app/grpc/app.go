@@ -2,6 +2,7 @@ package grpcapp
 
 import (
 	"fmt"
+	"github.com/bmstu-itstech/sso/internal/config"
 	authgrpc "github.com/bmstu-itstech/sso/internal/grpc/auth"
 	"google.golang.org/grpc"
 	"log/slog"
@@ -12,15 +13,17 @@ type App struct {
 	log        *slog.Logger
 	gRPCServer *grpc.Server
 	port       int
+	cfg        *config.Config
 }
 
-func New(log *slog.Logger, authServer *authgrpc.Auth, port int) *App {
+func New(log *slog.Logger, authServer *authgrpc.Auth, cfg config.Config) *App {
 	gRPCServer := grpc.NewServer()
-	authgrpc.RegisterServer(gRPCServer, authServer)
+	authgrpc.RegisterServer(gRPCServer, authServer, &cfg)
 	return &App{
+		cfg:        &cfg,
 		log:        log,
 		gRPCServer: gRPCServer,
-		port:       port,
+		port:       cfg.GRPC.Port,
 	}
 }
 

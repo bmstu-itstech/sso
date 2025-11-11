@@ -3,7 +3,7 @@ module github.com/bmstu-itstech/sso
 go 1.25.0
 
 require (
-	github.com/BOBAvov/protos_sso v0.0.10
+	github.com/BOBAvov/protos_sso v0.0.11
 	github.com/ThreeDotsLabs/watermill v1.5.1
 	github.com/brianvoe/gofakeit/v6 v6.28.0
 	github.com/fatih/color v1.18.0

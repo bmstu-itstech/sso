@@ -12,6 +12,7 @@ import (
 
 type App struct {
 	GRPCSrv *grpcapp.App
+	cfg     *config.Config
 }
 
 func New(logger *slog.Logger, cfg config.Config) *App {
@@ -19,14 +20,15 @@ func New(logger *slog.Logger, cfg config.Config) *App {
 	if err != nil {
 		log.Fatal("db no connect", slog.String("error", err.Error()))
 	}
-	authService := auth.New(logger, &repos, &repos, &repos, cfg.JWT.TokenTTL)
+	authService := auth.New(logger, &repos, &repos, &repos, &cfg)
 	grpcAuth := &authgrpc.Auth{
 		Login:           authService.Login,
 		RegisterNewUser: authService.RegisterNewUser,
 		IsAdmin:         authService.IsAdmin,
 	}
-	grpcSrv := grpcapp.New(logger, grpcAuth, cfg.GRPC.Port)
+	grpcSrv := grpcapp.New(logger, grpcAuth, cfg)
 	return &App{
 		GRPCSrv: grpcSrv,
+		cfg:     &cfg,
 	}
 }

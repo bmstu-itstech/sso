@@ -72,7 +72,6 @@ func randomFakePassword() string {
 	return gofakeit.Password(true, true, true, true, false, passDefaultLen)
 }
 
-// TODO: поведение, без ошибок, даже если не существует такого пользователя просто false
 func TestIsAdminIsFakeId(t *testing.T) {
 	ctx, st := suite.New(t)
 	id := lib.RandoInt64()
