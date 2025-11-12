@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
+	"github.com/bmstu-itstech/sso/internal/repository/storage"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -44,13 +45,13 @@ func (r *Repository) SaveUser(ctx context.Context, login string, password []byte
 	return nil
 }
 
-func (r *Repository) User(ctx context.Context, login string) (user models.User, err error) {
-	const op = "repository.User"
+func (r *Repository) UserByLogin(ctx context.Context, login string) (user models.User, err error) {
+	const op = "repository.UserByLogin"
 	const query = "SELECT * FROM users WHERE login = $1"
 
 	if err = r.db.GetContext(ctx, &user, query, login); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return models.User{}, errors.New("user not found")
+			return models.User{}, storage.ErrUserNotFound
 		}
 		fmt.Println(err)
 		return models.User{}, fmt.Errorf("%w: %s", err, op)
@@ -64,7 +65,7 @@ func (r *Repository) UserIsAdmin(ctx context.Context, userId int64) (isAdmin boo
 
 	if err = r.db.GetContext(ctx, &isAdmin, query, userId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return false, errors.New("user not found")
+			return false, storage.ErrUserNotFound
 		}
 		return false, fmt.Errorf("%w: %s", err, op)
 	}
@@ -76,7 +77,38 @@ func (r *Repository) App(ctx context.Context, appId int32) (app models.App, err 
 	const op = "repository.App"
 	query := fmt.Sprintf("SELECT * FROM apps WHERE id = $1")
 	if err = r.db.GetContext(ctx, &app, query, appId); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.App{}, storage.ErrAppNotFound
+		}
 		return models.App{}, fmt.Errorf("%w: %s", err, op)
 	}
 	return app, nil
+}
+
+func (r *Repository) UserById(ctx context.Context, userId int64) (user models.User, err error) {
+	const op = "repository.UserById"
+
+	query := fmt.Sprintf("SELECT * FROM users WHERE id = $1")
+
+	if err = r.db.GetContext(ctx, &user, query, userId); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.User{}, storage.ErrUserNotFound
+		}
+		return models.User{}, fmt.Errorf("%w: %s", err, op)
+	}
+
+	return user, nil
+}
+
+func (r *Repository) UserDelete(ctx context.Context, userId int64) (err error) {
+	const op = "repository.UserDelete"
+	query := fmt.Sprintf("DELETE FROM users WHERE id = $1")
+	_, err = r.db.ExecContext(ctx, query, userId)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return storage.ErrUserNotFound
+		}
+		return fmt.Errorf("%w: %s", err, op)
+	}
+	return nil
 }

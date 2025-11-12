@@ -44,3 +44,7 @@ func validateIsAdmin(req *ssov1.IsAdminRequest) error {
 	}
 	return nil
 }
+
+//func validateUpdatePassword(req *ssov1.UpdatePasswordRequest) error {
+//	if req.GetUserId()
+//}

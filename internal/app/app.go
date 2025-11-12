@@ -4,8 +4,8 @@ import (
 	grpcapp "github.com/bmstu-itstech/sso/internal/app/grpc"
 	"github.com/bmstu-itstech/sso/internal/config"
 	authgrpc "github.com/bmstu-itstech/sso/internal/grpc/auth"
-	"github.com/bmstu-itstech/sso/internal/repository"
-	"github.com/bmstu-itstech/sso/internal/services/auth"
+	"github.com/bmstu-itstech/sso/internal/repository/postgres"
+	"github.com/bmstu-itstech/sso/internal/services"
 	"log"
 	"log/slog"
 )
@@ -16,15 +16,18 @@ type App struct {
 }
 
 func New(logger *slog.Logger, cfg config.Config) *App {
-	repos, err := repository.NewPostgresDB(cfg.Postgres)
+	repos, err := postgres.NewPostgresDB(cfg.Postgres)
 	if err != nil {
 		log.Fatal("db no connect", slog.String("error", err.Error()))
 	}
-	authService := auth.New(logger, &repos, &repos, &repos, &cfg)
+	authService := services.New(logger, &repos, &repos, &repos, &cfg)
 	grpcAuth := &authgrpc.Auth{
 		Login:           authService.Login,
 		RegisterNewUser: authService.RegisterNewUser,
 		IsAdmin:         authService.IsAdmin,
+		UserInfo:        authService.GetUserInfo,
+		DeleteUser:      authService.DeleteUser,
+		//DeleteUser: authService.
 	}
 	grpcSrv := grpcapp.New(logger, grpcAuth, cfg)
 	return &App{
