@@ -27,7 +27,8 @@ func New(logger *slog.Logger, cfg config.Config) *App {
 		IsAdmin:         authService.IsAdmin,
 		UserInfo:        authService.GetUserInfo,
 		DeleteUser:      authService.DeleteUser,
-		//DeleteUser: authService.
+		UpdatePassword:  authService.UpdatePassword,
+		UsersAll:        authService.GetAllUsers,
 	}
 	grpcSrv := grpcapp.New(logger, grpcAuth, cfg)
 	return &App{

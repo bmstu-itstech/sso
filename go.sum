@@ -1,9 +1,11 @@
 filippo.io/edwards25519 v1.1.0 h1:FNf4tywRC1HmFuKW5xopWpigGjJKiJSV0Cqo0cJWDaA=
 filippo.io/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4VDT4=
-github.com/BOBAvov/protos_sso v0.0.10 h1:HM62ooNMM8f9LcNnRZ2WWsZxXJdob6OyjoMuK5DH3Gg=
-github.com/BOBAvov/protos_sso v0.0.10/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
-github.com/BOBAvov/protos_sso v0.0.11 h1:lfnKiE9ug8FEEDkYZUy1r9iqZ1znVIDfqYIA3F7P6+0=
-github.com/BOBAvov/protos_sso v0.0.11/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
+github.com/BOBAvov/protos_sso v0.0.12 h1:TZ6WLE6ZAgs6rHqsi+DynHEatRsp5ncWkxT6SAengks=
+github.com/BOBAvov/protos_sso v0.0.12/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
+github.com/BOBAvov/protos_sso v0.0.13 h1:hSVymscozgioomXS+umRxJrrskME7WPSwSz3ddgnMKg=
+github.com/BOBAvov/protos_sso v0.0.13/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
+github.com/BOBAvov/protos_sso v0.0.14 h1:Z/cymijbFZ8Aor0h6O2xVGe33UA8oajuwVv3HoP8UcM=
+github.com/BOBAvov/protos_sso v0.0.14/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
 github.com/ThreeDotsLabs/watermill v1.5.1 h1:t5xMivyf9tpmU3iozPqyrCZXHvoV1XQDfihas4sV0fY=
 github.com/ThreeDotsLabs/watermill v1.5.1/go.mod h1:Uop10dA3VeJWsSvis9qO3vbVY892LARrKAdki6WtXS4=
 github.com/brianvoe/gofakeit/v6 v6.28.0 h1:Xib46XXuQfmlLS2EXRuJpqcw8St6qSZz75OUo0tgAW4=

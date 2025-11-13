@@ -1,6 +1,7 @@
 package authgrpc
 
 import (
+	"fmt"
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -45,6 +46,10 @@ func validateIsAdmin(req *ssov1.IsAdminRequest) error {
 	return nil
 }
 
-//func validateUpdatePassword(req *ssov1.UpdatePasswordRequest) error {
-//	if req.GetUserId()
-//}
+func validateUpdatePassword(req *ssov1.UpdatePasswordRequest) error {
+	fmt.Println(req.GetNewPassword(), req.NewPassword)
+	if req.GetNewPassword() == "" {
+		return status.Error(codes.InvalidArgument, "password is empty")
+	}
+	return nil
+}

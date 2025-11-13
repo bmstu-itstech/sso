@@ -112,3 +112,25 @@ func (r *Repository) UserDelete(ctx context.Context, userId int64) (err error) {
 	}
 	return nil
 }
+
+func (r *Repository) UserNewPassword(ctx context.Context, userId int64, newPassword []byte) (err error) {
+	const op = "repository.UserNewPassword"
+	query := fmt.Sprintf("UPDATE users SET pass_hash = $1, updated_at = NOW() WHERE id = $2")
+	_, err = r.db.ExecContext(ctx, query, newPassword, userId)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return storage.ErrUserNotFound
+		}
+		return fmt.Errorf("%w: %s", err, op)
+	}
+	return nil
+}
+
+func (r *Repository) UsersAll(ctx context.Context) (users []models.User, err error) {
+	const op = "repository.UsersAll"
+	query := fmt.Sprintf("SELECT * FROM users")
+	if err = r.db.SelectContext(ctx, &users, query); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, op)
+	}
+	return users, nil
+}

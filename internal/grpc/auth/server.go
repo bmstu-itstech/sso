@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"strings"
 )
@@ -24,6 +25,7 @@ type Auth struct {
 	UserInfo        func(ctx context.Context, id int64) (user models.User, err error)
 	UpdatePassword  func(ctx context.Context, id int64, newPassword string) error
 	DeleteUser      func(ctx context.Context, userId int64) error
+	UsersAll        func(ctx context.Context) ([]models.User, error)
 }
 
 type serverApi struct {
@@ -36,6 +38,10 @@ func RegisterServer(gRPC *grpc.Server, auth *Auth, cfg *config.Config) {
 	ssov1.RegisterAuthServer(gRPC, &serverApi{auth: auth, cfg: cfg})
 }
 
+func (s *serverApi) Ping(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
 func (s *serverApi) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.LoginResponse, error) {
 	if err := validateLogin(req); err != nil {
 		return nil, err
@@ -45,6 +51,9 @@ func (s *serverApi) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.
 	if err != nil {
 		if errors.Is(err, services.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, "user not found")
+		}
+		if errors.Is(err, services.ErrAppNotFoud) {
+			return nil, status.Error(codes.NotFound, "app not found")
 		}
 		return nil, status.Error(codes.Internal, "login or password is incorrect")
 	}
@@ -128,7 +137,48 @@ func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*
 	}, nil
 }
 
-func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswordRequest) (*ssov1.User, error) {
+func (s *serverApi) UsersInfo(ctx context.Context, _ *emptypb.Empty) (*ssov1.Users, error) {
+	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
+	}
+	ctx = context.WithValue(ctx, "uid", userId)
+
+	isAdmin, err := s.auth.IsAdmin(ctx, userId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "is admin failed")
+	}
+
+	if !isAdmin {
+		return nil, status.Error(codes.PermissionDenied, "permission denied")
+	}
+	// TODO: провести бенчмарк для проверки на сколько выгодно и безопасно передовать один указатель на слайс
+	// TODO: или создавать новый слайс и копировать туда значения
+	// TODO: Сейчас реализован второй вариант
+	serverUsers, err := s.auth.UsersAll(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "get users info failed")
+	}
+
+	users := make([]*ssov1.User, len(serverUsers))
+	for i, userModel := range serverUsers {
+		users[i] = &ssov1.User{
+			UserId:   userModel.ID,
+			Login:    userModel.Login,
+			Email:    userModel.Email,
+			FullName: userModel.FullName,
+			IsAdmin:  userModel.IsAdmin,
+			CreateAt: timestamppb.New(userModel.CreatedAt),
+			UpdateAt: timestamppb.New(userModel.UpdatedAt),
+		}
+	}
+	return &ssov1.Users{Users: users}, nil
+}
+
+func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswordRequest) (*ssov1.UpdatePasswordResponse, error) {
+	if err := validateUpdatePassword(req); err != nil {
+		return nil, err
+	}
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
@@ -143,8 +193,16 @@ func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswor
 	if !isAdmin && userId != req.GetUserId() {
 		return nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
-	panic("implement me")
-	//s.auth.UpdatePassword()
+	err = s.auth.UpdatePassword(ctx, req.GetUserId(), req.GetNewPassword())
+	if err != nil {
+		if errors.Is(err, services.ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, "user not found")
+		}
+		return nil, status.Error(codes.Internal, "update password failed")
+	}
+
+	return &ssov1.UpdatePasswordResponse{
+		Message: "password updated"}, nil
 }
 
 func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest) (*ssov1.RemoveUserResponse, error) {

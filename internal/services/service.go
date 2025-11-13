@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	errAppNotFoud   = errors.New("app not found")
+	ErrAppNotFoud   = errors.New("app not found")
 	ErrUserNotFound = errors.New("user not found")
 )
 
@@ -52,6 +52,8 @@ type UserProvider interface {
 	UserById(ctx context.Context, userId int64) (user models.User, err error)
 	UserIsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error)
 	UserDelete(ctx context.Context, userId int64) (err error)
+	UserNewPassword(ctx context.Context, userId int64, newPassword []byte) (err error)
+	UsersAll(ctx context.Context) (users []models.User, err error)
 }
 
 type AppProvider interface {
@@ -94,6 +96,10 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found", err)
 			return "", ErrUserNotFound
+		}
+		if errors.Is(err, storage.ErrAppNotFound) {
+			log.Warn("app not found", err)
+			return "", ErrAppNotFoud
 		}
 
 		log.Error("failed to login", err)
@@ -176,4 +182,40 @@ func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) 
 		return fmt.Errorf("%s: %w", op, err)
 	}
 	return nil
+}
+
+func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassword string) (err error) {
+	const op = "auth.UpdatePassword"
+	log := s.log.With(slog.String("op", op))
+	log.Info("updating user password")
+
+	passHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Error("failed to geterate password hash", err)
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	err = s.userProvider.UserNewPassword(ctx, userId, passHash)
+	if err != nil {
+		if errors.Is(err, storage.ErrUserNotFound) {
+			log.Warn("user not found", err)
+			return ErrUserNotFound
+		}
+		log.Error("failed to update user password", err)
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	return nil
+}
+
+func (s *ServiceUser) GetAllUsers(ctx context.Context) (users []models.User, err error) {
+	const op = "auth.GetAllUsers"
+	log := s.log.With(slog.String("op", op))
+	log.Info("getting all users")
+
+	users, err = s.userProvider.UsersAll(ctx)
+	if err != nil {
+		log.Error("failed to get all users", err)
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return users, nil
 }
