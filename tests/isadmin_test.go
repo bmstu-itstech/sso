@@ -2,7 +2,6 @@ package tests
 
 import (
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/internal/lib"
 	"github.com/bmstu-itstech/sso/tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
@@ -12,15 +11,8 @@ import (
 	"testing"
 )
 
-const (
-	emptyAppId = 0
-	appId      = 1
-	appSecret  = "test-secret"
-
-	passDefaultLen = 10
-)
-
-func TestRegisterLogin_Login_HappyPath(t *testing.T) {
+// TODO: тест обычное использование
+func TestIsAdminIsNot(t *testing.T) {
 	ctx, st := suite.New(t)
 
 	email := gofakeit.Email()
@@ -66,17 +58,13 @@ func TestRegisterLogin_Login_HappyPath(t *testing.T) {
 	assert.Equal(t, email, claims["email"].(string))
 	assert.Equal(t, appId, int(claims["app_id"].(float64)))
 
-}
-
-func randomFakePassword() string {
-	return gofakeit.Password(true, true, true, true, false, passDefaultLen)
-}
-
-func TestIsAdminIsFakeId(t *testing.T) {
-	ctx, st := suite.New(t)
-	id := lib.RandoInt64()
-	t.Log(id)
-	resp, err := st.AuthClient.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: id})
+	respIsAdmin, err := st.AuthClient.IsAdmin(ctx, &ssov1.IsAdminRequest{
+		UserId: respRegister.GetUserId(),
+	})
 	require.NoError(t, err)
-	assert.False(t, resp.IsAdmin)
+	assert.False(t, respIsAdmin.IsAdmin)
 }
+
+// TODO: тест попытка обычного пользователя получить доступ к другому пользователю
+
+// TODO: тест админ проверяет пользователя
