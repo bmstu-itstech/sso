@@ -137,6 +137,20 @@ func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*
 	}, nil
 }
 
+func (s *serverApi) UpdateToken(ctx context.Context, _ *emptypb.Empty) (*ssov1.UpdateTokenResponse, error) {
+	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, "uid", userId)
+	token, err := jwt.NewTokenSSO(userId, s.getTokenJwtSSO(), s.cfg.JWT.TokenTTL)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "update token failed")
+	}
+	return &ssov1.UpdateTokenResponse{
+		Token: token,
+	}, nil
+}
 func (s *serverApi) UsersInfo(ctx context.Context, _ *emptypb.Empty) (*ssov1.Users, error) {
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {

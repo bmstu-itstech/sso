@@ -114,7 +114,7 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 	log.Info("user logged in")
 
 	if appId == appIdSSO {
-		token, err = jwt.NewTokenSSO(user, s.cfg.JWT.Secret, s.cfg.JWT.TokenTTL)
+		token, err = jwt.NewTokenSSO(user.ID, s.cfg.JWT.Secret, s.cfg.JWT.TokenTTL)
 		return token, err
 	}
 

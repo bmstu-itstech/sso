@@ -32,10 +32,10 @@ func NewToken(user models.User, app models.App, tokenTTL time.Duration) (string,
 	return tokenString, nil
 }
 
-func NewTokenSSO(user models.User, secret string, tokenTTL time.Duration) (string, error) {
+func NewTokenSSO(userId int64, secret string, tokenTTL time.Duration) (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
-	claims["uid"] = strconv.FormatInt(user.ID, 10)
+	claims["uid"] = strconv.FormatInt(userId, 10)
 	claims["exp"] = time.Now().Add(tokenTTL).Unix()
 
 	tokenString, err := token.SignedString([]byte(secret))
