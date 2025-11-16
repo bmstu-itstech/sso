@@ -29,6 +29,7 @@ func New(logger *slog.Logger, cfg config.Config) *App {
 		DeleteUser:      authService.DeleteUser,
 		UpdatePassword:  authService.UpdatePassword,
 		UsersAll:        authService.GetAllUsers,
+		UpdateTokenApp:  authService.UpdateTokenApp,
 	}
 	grpcSrv := grpcapp.New(logger, grpcAuth, cfg)
 	return &App{

@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"strconv"
+	"testing"
+
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"github.com/bmstu-itstech/sso/internal/lib"
 	"github.com/bmstu-itstech/sso/tests/suite"
@@ -8,16 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"strconv"
-	"testing"
-)
-
-const (
-	emptyAppId = 0
-	appId      = 1
-	appSecret  = "test-secret"
-
-	passDefaultLen = 10
 )
 
 func TestRegisterLogin_Login_HappyPath(t *testing.T) {
@@ -65,18 +58,17 @@ func TestRegisterLogin_Login_HappyPath(t *testing.T) {
 	assert.Equal(t, login, claims["login"].(string))
 	assert.Equal(t, email, claims["email"].(string))
 	assert.Equal(t, appId, int(claims["app_id"].(float64)))
-
 }
 
 func randomFakePassword() string {
 	return gofakeit.Password(true, true, true, true, false, passDefaultLen)
 }
 
+// Ошибка: пользователь не админ, так как пользователь запрашивает без JWT токена
 func TestIsAdminIsFakeId(t *testing.T) {
 	ctx, st := suite.New(t)
 	id := lib.RandoInt64()
 	t.Log(id)
-	resp, err := st.AuthClient.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: id})
-	require.NoError(t, err)
-	assert.False(t, resp.IsAdmin)
+	_, err := st.AuthClient.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: id})
+	require.Error(t, err)
 }

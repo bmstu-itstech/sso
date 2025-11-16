@@ -26,6 +26,7 @@ type Auth struct {
 	UpdatePassword  func(ctx context.Context, id int64, newPassword string) error
 	DeleteUser      func(ctx context.Context, userId int64) error
 	UsersAll        func(ctx context.Context) ([]models.User, error)
+	UpdateTokenApp  func(ctx context.Context) (newToken string, err error)
 }
 
 type serverApi struct {
@@ -80,10 +81,9 @@ func (s *serverApi) IsAdmin(ctx context.Context, req *ssov1.IsAdminRequest) (*ss
 	if err := validateIsAdmin(req); err != nil {
 		return nil, err
 	}
-
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
+		return nil, err
 	}
 	ctx = context.WithValue(ctx, "uid", userId)
 
@@ -108,7 +108,7 @@ func (s *serverApi) IsAdmin(ctx context.Context, req *ssov1.IsAdminRequest) (*ss
 func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*ssov1.User, error) {
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
+		return nil, err
 	}
 	ctx = context.WithValue(ctx, "uid", userId)
 
@@ -139,9 +139,23 @@ func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*
 
 func (s *serverApi) UpdateToken(ctx context.Context, _ *emptypb.Empty) (*ssov1.UpdateTokenResponse, error) {
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+
 	if err != nil {
-		return nil, err
+		newToken, err := s.auth.UpdateTokenApp(ctx)
+		if err != nil {
+			if errors.Is(err, services.ErrNoToken) {
+				return nil, status.Error(codes.InvalidArgument, "no token")
+			}
+			if errors.Is(err, services.ErrValidToken) {
+				return nil, status.Error(codes.InvalidArgument, "valid token")
+			}
+			return nil, status.Error(codes.Internal, "update token failed")
+		}
+		return &ssov1.UpdateTokenResponse{
+			Token: newToken,
+		}, nil
 	}
+
 	ctx = context.WithValue(ctx, "uid", userId)
 	token, err := jwt.NewTokenSSO(userId, s.getTokenJwtSSO(), s.cfg.JWT.TokenTTL)
 	if err != nil {
@@ -150,11 +164,12 @@ func (s *serverApi) UpdateToken(ctx context.Context, _ *emptypb.Empty) (*ssov1.U
 	return &ssov1.UpdateTokenResponse{
 		Token: token,
 	}, nil
+
 }
 func (s *serverApi) UsersInfo(ctx context.Context, _ *emptypb.Empty) (*ssov1.Users, error) {
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
+		return nil, err
 	}
 	ctx = context.WithValue(ctx, "uid", userId)
 
@@ -166,9 +181,6 @@ func (s *serverApi) UsersInfo(ctx context.Context, _ *emptypb.Empty) (*ssov1.Use
 	if !isAdmin {
 		return nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
-	// TODO: провести бенчмарк для проверки на сколько выгодно и безопасно передовать один указатель на слайс
-	// TODO: или создавать новый слайс и копировать туда значения
-	// TODO: Сейчас реализован второй вариант
 	serverUsers, err := s.auth.UsersAll(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "get users info failed")
@@ -195,7 +207,7 @@ func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswor
 	}
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
+		return nil, err
 	}
 	ctx = context.WithValue(ctx, "uid", userId)
 
@@ -256,7 +268,7 @@ func (s *serverApi) getUserId(ctx context.Context) (int64, error) {
 
 	jwtString := authHeaders[0]
 	jwtString = strings.TrimPrefix(jwtString, "Bearer ")
-	userId, err := jwt.ParseSSOJwtToken(jwtString, s.getTokenJwtSSO())
+	userId, err := jwt.ParseTokenSSO(jwtString, s.getTokenJwtSSO())
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -265,7 +277,6 @@ func (s *serverApi) getUserId(ctx context.Context) (int64, error) {
 		return 0, status.Error(codes.Unauthenticated, "token is invalid")
 	}
 	return userId, nil
-
 }
 
 func (s *serverApi) getTokenJwtSSO() string {

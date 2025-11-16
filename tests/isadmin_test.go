@@ -1,14 +1,16 @@
 package tests
 
 import (
+	"google.golang.org/grpc/metadata"
+	"strconv"
+	"testing"
+
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"github.com/bmstu-itstech/sso/tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"strconv"
-	"testing"
 )
 
 // TODO: тест обычное использование
@@ -34,7 +36,7 @@ func TestIsAdminIsNot(t *testing.T) {
 	t.Log(respRegister.GetUserId())
 
 	respLogin, err := st.AuthClient.Login(ctx, &ssov1.LoginRequest{
-		AppId:    appId,
+		AppId:    ssoId,
 		Login:    login,
 		Password: password,
 	})
@@ -45,7 +47,7 @@ func TestIsAdminIsNot(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	tokenParsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		return []byte(appSecret), nil
+		return []byte(ssoSecret), nil
 	})
 	require.NoError(t, err)
 
@@ -54,11 +56,10 @@ func TestIsAdminIsNot(t *testing.T) {
 
 	t.Log(respRegister.GetUserId(), claims["uid"])
 	assert.Equal(t, strconv.FormatInt(respRegister.GetUserId(), 10), claims["uid"].(string))
-	assert.Equal(t, login, claims["login"].(string))
-	assert.Equal(t, email, claims["email"].(string))
-	assert.Equal(t, appId, int(claims["app_id"].(float64)))
 
-	respIsAdmin, err := st.AuthClient.IsAdmin(ctx, &ssov1.IsAdminRequest{
+	// Создаем контекст с токеном для авторизованного запроса
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+respLogin.GetToken()))
+	respIsAdmin, err := st.AuthClient.IsAdmin(ctxWithToken, &ssov1.IsAdminRequest{
 		UserId: respRegister.GetUserId(),
 	})
 	require.NoError(t, err)

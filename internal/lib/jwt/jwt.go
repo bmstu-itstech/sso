@@ -2,7 +2,6 @@ package jwt
 
 import (
 	"errors"
-	"fmt"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
 	"github.com/golang-jwt/jwt/v5"
 	"strconv"
@@ -45,7 +44,7 @@ func NewTokenSSO(userId int64, secret string, tokenTTL time.Duration) (string, e
 	return tokenString, nil
 }
 
-func ParseSSOJwtToken(tokenString string, secret string) (int64, error) {
+func ParseTokenSSO(tokenString string, secret string) (int64, error) {
 	tokenParsed, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
@@ -60,7 +59,6 @@ func ParseSSOJwtToken(tokenString string, secret string) (int64, error) {
 
 	unixTime := int64(claims["exp"].(float64))
 	timeExp := time.Unix(unixTime, 0)
-	fmt.Println(timeExp)
 
 	if timeExp.Before(time.Now()) {
 		return 0, ErrTokenExpired
@@ -72,4 +70,53 @@ func ParseSSOJwtToken(tokenString string, secret string) (int64, error) {
 	}
 
 	return userId, nil
+}
+
+func PaseTokenApp(tokenString string, appSecret string) (models.AppJWT, error) {
+	tokenParsed, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(appSecret), nil
+	})
+	if err != nil {
+		return models.AppJWT{}, err
+	}
+
+	claims, ok := tokenParsed.Claims.(jwt.MapClaims)
+	if !ok {
+		return models.AppJWT{}, ErrTokenNoValid
+	}
+
+	unixTime := int64(claims["exp"].(float64))
+	timeExp := time.Unix(unixTime, 0)
+
+	if timeExp.Before(time.Now()) {
+		return models.AppJWT{}, ErrTokenExpired
+	}
+
+	userId, err := strconv.ParseInt(claims["uid"].(string), 10, 64)
+	if err != nil {
+		return models.AppJWT{}, ErrTokenNoValid
+	}
+	return models.AppJWT{
+		Uid:   userId,
+		Login: claims["login"].(string),
+		Email: claims["email"].(string),
+		AppId: int32(claims["app_id"].(float64)),
+	}, nil
+}
+
+func ParseAppId(tokenString string) (int32, error) {
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+
+	token, _, err := parser.ParseUnverified(tokenString, jwt.MapClaims{})
+	if err != nil {
+		return 0, err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if appID, exists := claims["app_id"]; exists {
+			return int32(appID.(float64)), nil
+		}
+	}
+
+	return 0, errors.New("app_id claim not found")
 }

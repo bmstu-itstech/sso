@@ -10,13 +10,17 @@ import (
 	"github.com/bmstu-itstech/sso/internal/lib/jwt"
 	"github.com/bmstu-itstech/sso/internal/repository/storage"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/metadata"
 	"log/slog"
+	"strings"
 	"time"
 )
 
 var (
 	ErrAppNotFoud   = errors.New("app not found")
 	ErrUserNotFound = errors.New("user not found")
+	ErrNoToken      = errors.New("you have not jwt token")
+	ErrValidToken   = errors.New("token is not valid")
 )
 
 const (
@@ -66,7 +70,6 @@ func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, emai
 	log := s.log.With(slog.String("op", op), slog.String("login", login))
 	log.Info("registering user")
 
-	// TODO: что по безопасности
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Error("failed to geterate password hash", err)
@@ -218,4 +221,46 @@ func (s *ServiceUser) GetAllUsers(ctx context.Context) (users []models.User, err
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return users, nil
+}
+
+func (s *ServiceUser) UpdateTokenApp(ctx context.Context) (string, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	authHeader := md.Get("authorization")
+	if len(authHeader) == 0 {
+		s.log.Warn("you have not jwt token")
+		return "", ErrNoToken
+	}
+
+	jwtString := authHeader[0]
+	jwtString = strings.TrimPrefix(jwtString, "Bearer ")
+	appId, err := jwt.ParseAppId(jwtString)
+	if err != nil {
+		s.log.Warn("failed to parse token: %w", err)
+		return "", ErrValidToken
+	}
+
+	app, err := s.appProvider.App(ctx, appId)
+	if err != nil {
+		s.log.Warn("failed to get app: %w", err)
+		return "", ErrValidToken
+	}
+
+	tokenMap, err := jwt.PaseTokenApp(jwtString, app.Secret)
+	if err != nil {
+		s.log.Warn("failed to parse token: %w", err)
+		return "", ErrValidToken
+	}
+
+	tokenNew, err := jwt.NewToken(models.User{
+		ID:    tokenMap.Uid,
+		Login: tokenMap.Login,
+		Email: tokenMap.Email}, app, s.tokenTTL)
+
+	if err != nil {
+		s.log.Warn("failed to generate token: %w", err)
+		return "", ErrValidToken
+	}
+
+	return tokenNew, nil
+
 }
