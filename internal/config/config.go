@@ -1,8 +1,10 @@
 package config
 
 import (
-	"github.com/spf13/viper"
+	"strings"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 type Config struct {
@@ -31,9 +33,17 @@ type JWTConfig struct {
 }
 
 func InitConfig() error {
+	// Настройка чтения переменных окружения
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Чтение .env файла (если существует)
 	viper.SetConfigFile(".env")
 	viper.SetConfigType("env")
-	return viper.ReadInConfig()
+	// Не возвращаем ошибку, если файл не найден (переменных окружения могут быть достаточны)
+	_ = viper.ReadInConfig()
+
+	return nil
 }
 
 func GetConfig() *Config {

@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 
 # Сборка бинарника (статически, без CGO)
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/sso ./cmd/app
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/sso ./cmd/sso
 
 
 FROM gcr.io/distroless/static:nonroot

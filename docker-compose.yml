@@ -1,41 +1,67 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine3.18
-    command: postgres
+    container_name: sso-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dbpass123}
+      POSTGRES_DB: ${POSTGRES_DB:-myapp_db}
     ports:
       - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
-    env_file: .env
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" ]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       retries: 5
       start_period: 10s
-      timeout: 10s
+      timeout: 5s
     volumes:
-      - ${POSTGRES_VOLUME:-.postgres/}:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      internal:
-        aliases:
-          - db
+      - sso-network
+    restart: unless-stopped
 
   migrate:
-    image: migrate/migrate
-    command: [
-      "-path",
-      "/migrations",
-      "-database",
-      "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable",
-      "up"
-    ]
+    image: migrate/migrate:latest
+    container_name: sso-migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${POSTGRES_USER:-dbuser}:${POSTGRES_PASSWORD:-dbpass123}@postgres:5432/${POSTGRES_DB:-myapp_db}?sslmode=disable"
+      - "up"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./migrations:/migrations
     networks:
-      internal:
+      - sso-network
+    restart: "no"
+
+  sso:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sso-app
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_EXTERNAL_PORT: 5432
+    ports:
+      - "${GRPC_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - sso-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
 
 networks:
-  internal:
+  sso-network:
     driver: bridge
