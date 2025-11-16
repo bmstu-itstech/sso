@@ -1,7 +1,7 @@
-package tests
+package snake_case
 
 import (
-	"github.com/bmstu-itstech/sso/tests/suite"
+	"github.com/bmstu-itstech/sso/snake_case/suite"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"testing"

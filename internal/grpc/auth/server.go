@@ -56,7 +56,7 @@ func (s *serverApi) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.
 		if errors.Is(err, services.ErrAppNotFoud) {
 			return nil, status.Error(codes.NotFound, "app not found")
 		}
-		return nil, status.Error(codes.Internal, "login or password is incorrect")
+		return nil, status.Error(codes.Internal, fmt.Sprintf("login failed"))
 	}
 
 	return &ssov1.LoginResponse{
@@ -71,6 +71,9 @@ func (s *serverApi) Register(ctx context.Context, req *ssov1.RegisterRequest) (*
 
 	userId, err := s.auth.RegisterNewUser(ctx, req.GetLogin(), req.GetPassword(), req.GetEmail(), req.GetFullName())
 	if err != nil {
+		if errors.Is(err, services.ErrUserNotUnique) {
+			return nil, status.Error(codes.AlreadyExists, "user already exists")
+		}
 		return nil, status.Error(codes.Internal, "register failed")
 	}
 
@@ -157,7 +160,7 @@ func (s *serverApi) UpdateToken(ctx context.Context, _ *emptypb.Empty) (*ssov1.U
 	}
 
 	ctx = context.WithValue(ctx, "uid", userId)
-	token, err := jwt.NewTokenSSO(userId, s.getTokenJwtSSO(), s.cfg.JWT.TokenTTL)
+	token, err := jwt.NewToken(models.User{ID: userId}, models.App{Id: 0, Secret: s.getTokenJwtSSO()}, s.cfg.JWT.TokenTTL)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "update token failed")
 	}
@@ -234,7 +237,7 @@ func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswor
 func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest) (*ssov1.RemoveUserResponse, error) {
 	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "Yoy have not jwt token")
+		return nil, status.Error(codes.InvalidArgument, "no jwt token")
 	}
 	ctx = context.WithValue(ctx, "uid", userId)
 
@@ -246,7 +249,6 @@ func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest
 	if !isAdmin && userId != req.GetUserId() {
 		return nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
-	fmt.Println(ctx, userId)
 
 	if err = s.auth.DeleteUser(ctx, req.GetUserId()); err != nil {
 		if errors.Is(err, services.ErrUserNotFound) {

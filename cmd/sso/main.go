@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/bmstu-itstech/sso/internal/app"
-	"github.com/bmstu-itstech/sso/internal/config"
-	"github.com/bmstu-itstech/sso/internal/logs"
 	"log"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/bmstu-itstech/sso/internal/app"
+	"github.com/bmstu-itstech/sso/internal/config"
+	"github.com/bmstu-itstech/sso/internal/logs"
 )
 
 func main() {

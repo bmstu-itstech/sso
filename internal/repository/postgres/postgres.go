@@ -7,14 +7,10 @@ import (
 	"fmt"
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/bmstu-itstech/sso/internal/repository/storage"
+	"github.com/bmstu-itstech/sso/internal/domain/storage"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
-)
-
-const (
-	usersTable = "users"
-	appsTable  = "apps"
 )
 
 type Repository struct {
@@ -23,7 +19,7 @@ type Repository struct {
 
 func NewPostgresDB(cfg config.PostgresConfig) (Repository, error) {
 	const op = "repository.NewPostgresDB"
-	db, err := sqlx.Open("postgres", fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", cfg.Host, cfg.Port, cfg.UserName, cfg.Password, cfg.DB))
+	db, err := sqlx.Open("postgres", fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", cfg.Host, cfg.Port, cfg.UserName, cfg.Password, cfg.DB, cfg.SSLMode))
 	if err != nil {
 		return Repository{}, fmt.Errorf("%w: %s", err, op)
 	}
@@ -37,9 +33,13 @@ func NewPostgresDB(cfg config.PostgresConfig) (Repository, error) {
 
 func (r *Repository) SaveUser(ctx context.Context, login string, password []byte, email, fullName string, userId int64) (err error) {
 	const op = "repository.SaveUser"
-	query := fmt.Sprintf("INSERT INTO users (id,login, email,full_name, pass_hash) VALUES($1,$2,$3,$4,$5)")
+	query := fmt.Sprintf("INSERT INTO users (id, login, email, full_name, pass_hash) VALUES($1,$2,$3,$4,$5)")
 	_, err = r.db.ExecContext(ctx, query, userId, login, email, fullName, password)
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return storage.ErrUserNotUnique
+		}
 		return fmt.Errorf("%w: %s", err, op)
 	}
 	return nil

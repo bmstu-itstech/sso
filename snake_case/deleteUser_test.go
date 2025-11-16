@@ -1,11 +1,11 @@
-package tests
+package snake_case
 
 import (
+	"math/rand"
 	"testing"
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/internal/lib"
-	"github.com/bmstu-itstech/sso/tests/suite"
+	"github.com/bmstu-itstech/sso/snake_case/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,56 +131,9 @@ func TestDeleteUser_AdminDeletesNonExistentUser(t *testing.T) {
 	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
 
 	// Админ пытается удалить несуществующего пользователя
-	fakeUserId := lib.RandoInt64()
+	fakeUserId := rand.Int63()
 	_, err = st.AuthClient.RemoveUser(ctxWithToken, &ssov1.RemoveUserRequest{
 		UserId: fakeUserId,
 	})
 	require.NoError(t, err)
 }
-
-//// Лучше всего не запускать!!! админ удаляет сам себя
-//func TestDeleteUser_AdminDeletesSelf(t *testing.T) {
-//	ctx, st := suite.New(t)
-//
-//	// Логинимся как админ
-//	respLogin, err := st.AuthClient.Login(ctx, &ssov1.LoginRequest{
-//		AppId:    appId,
-//		Login:    adminLogin,
-//		Password: adminPass,
-//	})
-//	require.NoError(t, err)
-//
-//	token := respLogin.GetToken()
-//	require.NotEmpty(t, token)
-//
-//	// Парсим токен, чтобы получить uid админа
-//	tokenParsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-//		return []byte(appSecret), nil
-//	})
-//	require.NoError(t, err)
-//
-//	claims, ok := tokenParsed.Claims.(jwt.MapClaims)
-//	require.True(t, ok)
-//
-//	adminUserIdStr := claims["uid"].(string)
-//	adminUserId, err := strconv.ParseInt(adminUserIdStr, 10, 64)
-//	require.NoError(t, err)
-//
-//	// Создаем контекст с токеном для авторизованного запроса
-//	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
-//
-//	// Админ удаляет сам себя
-//	respDeleteUser, err := st.AuthClient.RemoveUser(ctxWithToken, &ssov1.RemoveUserRequest{
-//		UserId: adminUserId,
-//	})
-//	require.NoError(t, err)
-//	assert.NotEmpty(t, respDeleteUser.GetMessage())
-//
-//	// Проверяем, что админ больше не может залогиниться
-//	_, err = st.AuthClient.Login(ctx, &ssov1.LoginRequest{
-//		AppId:    appId,
-//		Login:    adminLogin,
-//		Password: adminPass,
-//	})
-//	require.Error(t, err)
-//}

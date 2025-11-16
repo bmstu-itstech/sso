@@ -4,10 +4,8 @@ go 1.25.0
 
 require (
 	github.com/BOBAvov/protos_sso v0.0.14
-	github.com/ThreeDotsLabs/watermill v1.5.1
 	github.com/brianvoe/gofakeit/v6 v6.28.0
 	github.com/fatih/color v1.18.0
-	github.com/go-chi/chi/v5 v5.2.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9

@@ -6,21 +6,22 @@ import (
 	"fmt"
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/bmstu-itstech/sso/internal/lib"
+	"github.com/bmstu-itstech/sso/internal/domain/storage"
 	"github.com/bmstu-itstech/sso/internal/lib/jwt"
-	"github.com/bmstu-itstech/sso/internal/repository/storage"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/metadata"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"time"
 )
 
 var (
-	ErrAppNotFoud   = errors.New("app not found")
-	ErrUserNotFound = errors.New("user not found")
-	ErrNoToken      = errors.New("you have not jwt token")
-	ErrValidToken   = errors.New("token is not valid")
+	ErrAppNotFoud    = errors.New("app not found")
+	ErrUserNotFound  = errors.New("user not found")
+	ErrNoToken       = errors.New("you have not jwt token")
+	ErrValidToken    = errors.New("token is not valid")
+	ErrUserNotUnique = errors.New("user with this login already exists")
 )
 
 const (
@@ -49,14 +50,14 @@ func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv App
 
 type UserSaver interface {
 	SaveUser(ctx context.Context, login string, password []byte, email string, fullName string, userId int64) (err error)
+	UserNewPassword(ctx context.Context, userId int64, newPassword []byte) (err error)
+	UserDelete(ctx context.Context, userId int64) (err error)
 }
 
 type UserProvider interface {
 	UserByLogin(ctx context.Context, login string) (user models.User, err error)
 	UserById(ctx context.Context, userId int64) (user models.User, err error)
 	UserIsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error)
-	UserDelete(ctx context.Context, userId int64) (err error)
-	UserNewPassword(ctx context.Context, userId int64, newPassword []byte) (err error)
 	UsersAll(ctx context.Context) (users []models.User, err error)
 }
 
@@ -72,14 +73,17 @@ func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, emai
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Error("failed to geterate password hash", err)
+		log.Error("failed to create password", err)
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	id := lib.RandoInt64()
-	log.Info("generated user id", slog.Int64("user_id", id))
+	id := rand.Int63()
+	log.Info("create user id", slog.Int64("user_id", id))
 
 	if err = s.userSaver.SaveUser(ctx, login, passHash, email, fullName, id); err != nil {
+		if errors.Is(err, storage.ErrUserNotUnique) {
+			return 0, ErrUserNotUnique
+		}
 		log.Error("failed to save user", err)
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
@@ -117,7 +121,8 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 	log.Info("user logged in")
 
 	if appId == appIdSSO {
-		token, err = jwt.NewTokenSSO(user.ID, s.cfg.JWT.Secret, s.cfg.JWT.TokenTTL)
+		token, err = jwt.NewToken(user, models.App{Id: 0, Secret: s.cfg.JWT.Secret}, s.cfg.JWT.TokenTTL)
+		fmt.Println(token)
 		return token, err
 	}
 
@@ -175,7 +180,7 @@ func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) 
 	log := s.log.With(slog.String("op", op))
 	log.Info("deleting user")
 
-	err = s.userProvider.UserDelete(ctx, userId)
+	err = s.userSaver.UserDelete(ctx, userId)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found", err)
@@ -198,7 +203,7 @@ func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassw
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	err = s.userProvider.UserNewPassword(ctx, userId, passHash)
+	err = s.userSaver.UserNewPassword(ctx, userId, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found", err)
@@ -227,7 +232,7 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context) (string, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
 	authHeader := md.Get("authorization")
 	if len(authHeader) == 0 {
-		s.log.Warn("you have not jwt token")
+		s.log.Warn("JWT token not found")
 		return "", ErrNoToken
 	}
 
@@ -245,16 +250,15 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context) (string, error) {
 		return "", ErrValidToken
 	}
 
-	tokenMap, err := jwt.PaseTokenApp(jwtString, app.Secret)
+	tokenMap, err := jwt.ParseTokenApp(jwtString, app.Secret)
 	if err != nil {
 		s.log.Warn("failed to parse token: %w", err)
 		return "", ErrValidToken
 	}
 
-	tokenNew, err := jwt.NewToken(models.User{
-		ID:    tokenMap.Uid,
-		Login: tokenMap.Login,
-		Email: tokenMap.Email}, app, s.tokenTTL)
+	tokenNew, err := jwt.NewToken(
+		models.User{ID: tokenMap.Uid},
+		app, s.tokenTTL)
 
 	if err != nil {
 		s.log.Warn("failed to generate token: %w", err)

@@ -1,12 +1,12 @@
-package tests
+package snake_case
 
 import (
+	"math/rand"
 	"strconv"
 	"testing"
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/internal/lib"
-	"github.com/bmstu-itstech/sso/tests/suite"
+	"github.com/bmstu-itstech/sso/snake_case/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -55,8 +55,6 @@ func TestRegisterLogin_Login_HappyPath(t *testing.T) {
 
 	t.Log(respRegister.GetUserId(), claims["uid"])
 	assert.Equal(t, strconv.FormatInt(respRegister.GetUserId(), 10), claims["uid"].(string))
-	assert.Equal(t, login, claims["login"].(string))
-	assert.Equal(t, email, claims["email"].(string))
 	assert.Equal(t, appId, int(claims["app_id"].(float64)))
 }
 
@@ -67,7 +65,7 @@ func randomFakePassword() string {
 // Ошибка: пользователь не админ, так как пользователь запрашивает без JWT токена
 func TestIsAdminIsFakeId(t *testing.T) {
 	ctx, st := suite.New(t)
-	id := lib.RandoInt64()
+	id := rand.Int63()
 	t.Log(id)
 	_, err := st.AuthClient.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: id})
 	require.Error(t, err)

@@ -1,8 +1,8 @@
-package tests
+package snake_case
 
 import (
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/tests/suite"
+	"github.com/bmstu-itstech/sso/snake_case/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -75,7 +75,5 @@ func TestUpdateToken_User(t *testing.T) {
 	// Проверяем, что данные пользователя совпадают
 	assert.Equal(t, strconv.FormatInt(respRegister.GetUserId(), 10), newClaims["uid"].(string))
 	assert.Equal(t, oldClaims["uid"], newClaims["uid"])
-	assert.Equal(t, login, newClaims["login"].(string))
-	assert.Equal(t, email, newClaims["email"].(string))
 	assert.Equal(t, appId, int(newClaims["app_id"].(float64)))
 }

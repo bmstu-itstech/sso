@@ -18,8 +18,6 @@ func NewToken(user models.User, app models.App, tokenTTL time.Duration) (string,
 
 	claims := token.Claims.(jwt.MapClaims)
 	claims["uid"] = strconv.FormatInt(user.ID, 10)
-	claims["login"] = user.Login
-	claims["email"] = user.Email
 	claims["exp"] = time.Now().Add(tokenTTL).Unix()
 	claims["app_id"] = app.Id
 
@@ -28,19 +26,6 @@ func NewToken(user models.User, app models.App, tokenTTL time.Duration) (string,
 		return "", err
 	}
 
-	return tokenString, nil
-}
-
-func NewTokenSSO(userId int64, secret string, tokenTTL time.Duration) (string, error) {
-	token := jwt.New(jwt.SigningMethodHS256)
-	claims := token.Claims.(jwt.MapClaims)
-	claims["uid"] = strconv.FormatInt(userId, 10)
-	claims["exp"] = time.Now().Add(tokenTTL).Unix()
-
-	tokenString, err := token.SignedString([]byte(secret))
-	if err != nil {
-		return "", err
-	}
 	return tokenString, nil
 }
 
@@ -72,7 +57,7 @@ func ParseTokenSSO(tokenString string, secret string) (int64, error) {
 	return userId, nil
 }
 
-func PaseTokenApp(tokenString string, appSecret string) (models.AppJWT, error) {
+func ParseTokenApp(tokenString string, appSecret string) (models.AppJWT, error) {
 	tokenParsed, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return []byte(appSecret), nil
 	})
@@ -98,8 +83,6 @@ func PaseTokenApp(tokenString string, appSecret string) (models.AppJWT, error) {
 	}
 	return models.AppJWT{
 		Uid:   userId,
-		Login: claims["login"].(string),
-		Email: claims["email"].(string),
 		AppId: int32(claims["app_id"].(float64)),
 	}, nil
 }
@@ -112,11 +95,16 @@ func ParseAppId(tokenString string) (int32, error) {
 		return 0, err
 	}
 
-	if claims, ok := token.Claims.(jwt.MapClaims); ok {
-		if appID, exists := claims["app_id"]; exists {
-			return int32(appID.(float64)), nil
-		}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, errors.New("app_id claim not found")
 	}
 
-	return 0, errors.New("app_id claim not found")
+	appID, exists := claims["app_id"]
+	if !exists {
+		return 0, errors.New("app_id claim not found")
+	}
+
+	return int32(appID.(float64)), nil
+
 }

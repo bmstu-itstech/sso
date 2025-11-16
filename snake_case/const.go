@@ -1,4 +1,4 @@
-package tests
+package snake_case
 
 const (
 	ssoId          = 0
@@ -6,6 +6,6 @@ const (
 	appSecret      = "test-secret"
 	passDefaultLen = 10
 	adminLogin     = "admin"
-	adminPass      = "admin_pass"
+	adminPass      = "admin"
 	ssoSecret      = "my-secret"
 )

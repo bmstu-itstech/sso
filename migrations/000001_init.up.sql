@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS users (
-    id BIGINT,
+    id BIGINT PRIMARY KEY,
     login VARCHAR(255) NOT NULL UNIQUE,
     email VARCHAR(255),
     full_name VARCHAR(255) NOT NULL,
