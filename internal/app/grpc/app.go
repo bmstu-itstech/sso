@@ -57,5 +57,4 @@ func (a *App) Stop() {
 
 	a.gRPCServer.GracefulStop()
 	log.Info("grpc server stopped")
-
 }
