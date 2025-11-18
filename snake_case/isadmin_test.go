@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: тест обычное использование
+// тест обычное использование
 func TestIsAdminIsNot(t *testing.T) {
 	ctx, st := suite.New(t)
 
@@ -65,7 +65,3 @@ func TestIsAdminIsNot(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, respIsAdmin.IsAdmin)
 }
-
-// TODO: тест попытка обычного пользователя получить доступ к другому пользователю
-
-// TODO: тест админ проверяет пользователя

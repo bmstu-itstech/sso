@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// TODO: пользователь у себя
+// пользователь у себя
 func TestUpdatePassword_UserSelf(t *testing.T) {
 	ctx, st := suite.New(t)
 
@@ -62,7 +62,7 @@ func TestUpdatePassword_UserSelf(t *testing.T) {
 	assert.NotEmpty(t, respLoginNew.GetToken())
 }
 
-// TODO: админ у пользователя
+// админ у пользователя
 func TestUpdatePassword_AdminToUser(t *testing.T) {
 	ctx, st := suite.New(t)
 

@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-// TODO: обнавление токена пользователя
+// обнавление токена пользователя
 func TestUpdateToken_User(t *testing.T) {
 	ctx, st := suite.New(t)
 

@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// TODO: пользователь
+// пользователь
 func TestUserInfo_UserSelf(t *testing.T) {
 	ctx, st := suite.New(t)
 
@@ -59,7 +59,7 @@ func TestUserInfo_UserSelf(t *testing.T) {
 	assert.False(t, respUserInfo.GetIsAdmin())
 }
 
-// TODO: админ к себе
+// админ к себе
 func TestUserInfo_AdminSelf(t *testing.T) {
 	ctx, st := suite.New(t)
 

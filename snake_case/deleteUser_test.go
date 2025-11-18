@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// TODO: админ удаляет пользователя
+// админ удаляет пользователя
 func TestDeleteUser_AdminDeletesUser(t *testing.T) {
 	ctx, st := suite.New(t)
 
@@ -63,7 +63,7 @@ func TestDeleteUser_AdminDeletesUser(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TODO: пользователь удаляет себя
+// пользователь удаляет себя
 func TestDeleteUser_UserDeletesSelf(t *testing.T) {
 	ctx, st := suite.New(t)
 
@@ -112,7 +112,7 @@ func TestDeleteUser_UserDeletesSelf(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TODO: админ удаляет не существующего пользователя
+// админ удаляет не существующего пользователя
 func TestDeleteUser_AdminDeletesNonExistentUser(t *testing.T) {
 	ctx, st := suite.New(t)
 

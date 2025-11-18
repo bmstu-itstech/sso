@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// TODO: пользователь пытается получить доступ
+// пользователь пытается получить доступ
 func TestUsersInfo_UserTriesToGetAccess(t *testing.T) {
 	ctx, st := suite.New(t)
 
@@ -53,7 +53,7 @@ func TestUsersInfo_UserTriesToGetAccess(t *testing.T) {
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 }
 
-// TODO: админ получает список  пользователь
+// админ получает список  пользователь
 func TestUsersInfo_AdminGetsUsersList(t *testing.T) {
 	ctx, st := suite.New(t)
 
