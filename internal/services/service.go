@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bmstu-itstech/sso/internal/config"
-	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/bmstu-itstech/sso/internal/domain/storage"
-	"github.com/bmstu-itstech/sso/internal/lib/jwt"
-	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/grpc/metadata"
 	"log/slog"
 	"math/rand"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/metadata"
+
+	"github.com/bmstu-itstech/sso/internal/config"
+	"github.com/bmstu-itstech/sso/internal/domain/models"
+	"github.com/bmstu-itstech/sso/internal/domain/storage"
+	"github.com/bmstu-itstech/sso/internal/lib/jwt"
 )
 
 var (
@@ -122,7 +124,6 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 
 	if appId == appIdSSO {
 		token, err = jwt.NewToken(user, models.App{Id: 0, Secret: s.cfg.JWT.Secret}, s.cfg.JWT.TokenTTL)
-		fmt.Println(token)
 		return token, err
 	}
 
@@ -199,7 +200,7 @@ func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassw
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
-		log.Error("failed to geterate password hash", err)
+		log.Error("failed to generate password hash", err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 

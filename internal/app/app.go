@@ -1,13 +1,14 @@
 package app
 
 import (
+	"log"
+	"log/slog"
+
 	grpcapp "github.com/bmstu-itstech/sso/internal/app/grpc"
 	"github.com/bmstu-itstech/sso/internal/config"
 	authgrpc "github.com/bmstu-itstech/sso/internal/grpc/auth"
 	"github.com/bmstu-itstech/sso/internal/repository/postgres"
 	"github.com/bmstu-itstech/sso/internal/services"
-	"log"
-	"log/slog"
 )
 
 type App struct {

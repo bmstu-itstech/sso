@@ -1,4 +1,4 @@
-package snake_case
+package function_tests
 
 const (
 	ssoId          = 0

@@ -26,6 +26,7 @@ type PostgresConfig struct {
 	UserName string
 	Password string
 	SSLMode  string
+	Url      string
 }
 
 type JWTConfig struct {
@@ -61,6 +62,7 @@ func GetConfig() *Config {
 			UserName: viper.GetString("POSTGRES_USER"),
 			Password: viper.GetString("POSTGRES_PASSWORD"),
 			SSLMode:  viper.GetString("POSTGRES_SSL_MODE"),
+			Url:      viper.GetString("POSTGRES_URI"),
 		},
 		JWT: JWTConfig{
 			Secret:   viper.GetString("JWT_SECRET"),

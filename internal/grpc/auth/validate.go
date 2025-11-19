@@ -15,9 +15,14 @@ func validateLogin(req *ssov1.LoginRequest) error {
 	if req.GetLogin() == "" {
 		return status.Error(codes.InvalidArgument, "login is empty")
 	}
-
+	if len(req.GetLogin()) > 255 {
+		return status.Error(codes.InvalidArgument, "login is too long")
+	}
 	if req.GetPassword() == "" {
 		return status.Error(codes.InvalidArgument, "password is empty")
+	}
+	if len(req.GetPassword()) > 255 {
+		return status.Error(codes.InvalidArgument, "password is too long")
 	}
 	return nil
 
@@ -27,14 +32,26 @@ func validateRegister(req *ssov1.RegisterRequest) error {
 	if req.GetLogin() == "" {
 		return status.Error(codes.InvalidArgument, "login is empty")
 	}
+	if len(req.GetLogin()) > 255 {
+		return status.Error(codes.InvalidArgument, "login is too long")
+	}
 	if req.GetPassword() == "" {
 		return status.Error(codes.InvalidArgument, "password is empty")
+	}
+	if len(req.GetPassword()) > 255 {
+		return status.Error(codes.InvalidArgument, "password is too long")
 	}
 	if req.GetEmail() == "" {
 		return status.Error(codes.InvalidArgument, "email is empty")
 	}
+	if len(req.GetEmail()) > 255 {
+		return status.Error(codes.InvalidArgument, "email is too long")
+	}
 	if req.GetFullName() == "" {
 		return status.Error(codes.InvalidArgument, "full name is empty")
+	}
+	if len(req.GetFullName()) > 255 {
+		return status.Error(codes.InvalidArgument, "full name is too long")
 	}
 	return nil
 }
@@ -50,6 +67,9 @@ func validateUpdatePassword(req *ssov1.UpdatePasswordRequest) error {
 	fmt.Println(req.GetNewPassword(), req.NewPassword)
 	if req.GetNewPassword() == "" {
 		return status.Error(codes.InvalidArgument, "password is empty")
+	}
+	if len(req.GetNewPassword()) > 255 {
+		return status.Error(codes.InvalidArgument, "password is too long")
 	}
 	return nil
 }

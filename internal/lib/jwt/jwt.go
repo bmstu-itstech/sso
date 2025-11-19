@@ -2,10 +2,12 @@ package jwt
 
 import (
 	"errors"
-	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/golang-jwt/jwt/v5"
 	"strconv"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/bmstu-itstech/sso/internal/domain/models"
 )
 
 var (

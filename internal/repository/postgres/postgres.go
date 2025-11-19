@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/bmstu-itstech/sso/internal/config"
-	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/bmstu-itstech/sso/internal/domain/storage"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
+
+	"github.com/bmstu-itstech/sso/internal/config"
+	"github.com/bmstu-itstech/sso/internal/domain/models"
+	"github.com/bmstu-itstech/sso/internal/domain/storage"
 )
 
 type Repository struct {
@@ -19,14 +21,24 @@ type Repository struct {
 
 func NewPostgresDB(cfg config.PostgresConfig) (Repository, error) {
 	const op = "repository.NewPostgresDB"
-	db, err := sqlx.Open("postgres", fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", cfg.Host, cfg.Port, cfg.UserName, cfg.Password, cfg.DB, cfg.SSLMode))
+	var connectionString string
+
+	if cfg.Url != "" {
+		connectionString = cfg.Url
+	} else {
+		connectionString = fmt.Sprintf(
+			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.UserName, cfg.Password, cfg.DB, cfg.SSLMode)
+	}
+
+	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {
 		return Repository{}, fmt.Errorf("%w: %s", err, op)
 	}
 
 	err = db.Ping()
 	if err != nil {
-		return Repository{}, fmt.Errorf("%w: %s", err, op)
+		return Repository{}, fmt.Errorf("%s: %w", op, err)
 	}
 	return Repository{db: db}, nil
 }
@@ -67,7 +79,7 @@ func (r *Repository) UserIsAdmin(ctx context.Context, userId int64) (isAdmin boo
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, storage.ErrUserNotFound
 		}
-		return false, fmt.Errorf("%w: %s", err, op)
+		return false, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return isAdmin, nil

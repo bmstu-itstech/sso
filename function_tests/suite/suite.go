@@ -32,7 +32,7 @@ func New(t *testing.T) (context.Context, *Suite) {
 	})
 
 	cc, err := grpc.DialContext(context.Background(),
-		net.JoinHostPort("localhost", "8080"),
+		net.JoinHostPort("localhost", strconv.Itoa(cfg.GRPC.Port)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("failed to dial grpc server: %v", err)

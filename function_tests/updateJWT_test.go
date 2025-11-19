@@ -1,8 +1,8 @@
-package snake_case
+package function_tests
 
 import (
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/snake_case/suite"
+	"github.com/bmstu-itstech/sso/function_tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"

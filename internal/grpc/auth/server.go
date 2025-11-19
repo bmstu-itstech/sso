@@ -4,18 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/internal/config"
-	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/bmstu-itstech/sso/internal/lib/jwt"
-	"github.com/bmstu-itstech/sso/internal/services"
+	"strings"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"strings"
+
+	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
+	"github.com/bmstu-itstech/sso/internal/config"
+	"github.com/bmstu-itstech/sso/internal/domain/models"
+	"github.com/bmstu-itstech/sso/internal/lib/jwt"
+	"github.com/bmstu-itstech/sso/internal/services"
 )
 
 type Auth struct {
@@ -262,7 +264,11 @@ func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest
 }
 
 func (s *serverApi) getUserId(ctx context.Context) (int64, error) {
-	md, _ := metadata.FromIncomingContext(ctx)
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return 0, status.Error(codes.InvalidArgument, "no metadata")
+	}
+
 	authHeaders := md.Get("authorization")
 	if len(authHeaders) == 0 {
 		return 0, status.Error(codes.Unauthenticated, "authorization is required")
