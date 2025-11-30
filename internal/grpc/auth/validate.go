@@ -8,21 +8,22 @@ import (
 )
 
 const (
-	emptyValue = 0
+	emptyValue    = 0
+	maxLenStrings = 255
 )
 
 func validateLogin(req *ssov1.LoginRequest) error {
 	if req.GetLogin() == "" {
 		return status.Error(codes.InvalidArgument, "login is empty")
 	}
-	if len(req.GetLogin()) > 255 {
-		return status.Error(codes.InvalidArgument, "login is too long")
+	if len(req.GetLogin()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("login is too long, max length is %d, your login len is %d", maxLenStrings, len(req.GetLogin())))
 	}
 	if req.GetPassword() == "" {
 		return status.Error(codes.InvalidArgument, "password is empty")
 	}
-	if len(req.GetPassword()) > 255 {
-		return status.Error(codes.InvalidArgument, "password is too long")
+	if len(req.GetPassword()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("password is too long, max length is %d, your password len is %d", maxLenStrings, len(req.GetPassword())))
 	}
 	return nil
 
@@ -32,26 +33,26 @@ func validateRegister(req *ssov1.RegisterRequest) error {
 	if req.GetLogin() == "" {
 		return status.Error(codes.InvalidArgument, "login is empty")
 	}
-	if len(req.GetLogin()) > 255 {
-		return status.Error(codes.InvalidArgument, "login is too long")
+	if len(req.GetLogin()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("login is too long, max length is %d, your login len is %d", maxLenStrings, len(req.GetLogin())))
 	}
 	if req.GetPassword() == "" {
 		return status.Error(codes.InvalidArgument, "password is empty")
 	}
-	if len(req.GetPassword()) > 255 {
-		return status.Error(codes.InvalidArgument, "password is too long")
+	if len(req.GetPassword()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("password is too long, max length is %d, your password len is %d", maxLenStrings, len(req.GetPassword())))
 	}
 	if req.GetEmail() == "" {
 		return status.Error(codes.InvalidArgument, "email is empty")
 	}
-	if len(req.GetEmail()) > 255 {
-		return status.Error(codes.InvalidArgument, "email is too long")
+	if len(req.GetEmail()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("email is too long, max length is %d, your email len is %d", maxLenStrings, len(req.GetEmail())))
 	}
 	if req.GetFullName() == "" {
 		return status.Error(codes.InvalidArgument, "full name is empty")
 	}
-	if len(req.GetFullName()) > 255 {
-		return status.Error(codes.InvalidArgument, "full name is too long")
+	if len(req.GetFullName()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("full name is too long, max length is %d, your full name len is %d", maxLenStrings, len(req.GetFullName())))
 	}
 	return nil
 }
@@ -64,12 +65,11 @@ func validateIsAdmin(req *ssov1.IsAdminRequest) error {
 }
 
 func validateUpdatePassword(req *ssov1.UpdatePasswordRequest) error {
-	fmt.Println(req.GetNewPassword(), req.NewPassword)
 	if req.GetNewPassword() == "" {
 		return status.Error(codes.InvalidArgument, "password is empty")
 	}
-	if len(req.GetNewPassword()) > 255 {
-		return status.Error(codes.InvalidArgument, "password is too long")
+	if len(req.GetNewPassword()) > maxLenStrings {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("password is too long, max length is %d, your password len is %d", maxLenStrings, len(req.GetNewPassword())))
 	}
 	return nil
 }

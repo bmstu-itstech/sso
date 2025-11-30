@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -35,15 +36,30 @@ type JWTConfig struct {
 }
 
 func InitConfig() error {
-	// Настройка чтения переменных окружения
+	// 1. Настраиваем автоматическое чтение переменных окружения (для Docker)
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// Чтение .env файла (если существует)
+	// 2. Настраиваем чтение из файла (для локальной разработки)
 	viper.SetConfigFile(".env")
 	viper.SetConfigType("env")
-	// Не возвращаем ошибку, если файл не найден (переменных окружения могут быть достаточны)
-	_ = viper.ReadInConfig()
+
+	// 3. Пытаемся прочитать файл
+	if err := viper.ReadInConfig(); err != nil {
+		// Если файла нет — это НЕ ошибка, так как мы в Docker
+		// и переменные придут через AutomaticEnv().
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		// Проверка на специфичную ошибку Viper (на всякий случай)
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			return nil
+		}
+
+		// Если файл есть, но он битый (синтаксис) — возвращаем ошибку
+		return err
+	}
 
 	return nil
 }

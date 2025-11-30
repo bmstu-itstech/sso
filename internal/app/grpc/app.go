@@ -2,6 +2,7 @@ package grpcapp
 
 import (
 	"fmt"
+	"github.com/bmstu-itstech/sso/internal/grpc/middleware"
 	"log/slog"
 	"net"
 
@@ -18,8 +19,10 @@ type App struct {
 	cfg        *config.Config
 }
 
-func New(log *slog.Logger, authServer *authgrpc.Auth, cfg config.Config) *App {
-	gRPCServer := grpc.NewServer()
+func New(log *slog.Logger, authServer authgrpc.Auth, cfg config.Config) *App {
+	authInterceptor := middleware.LoggerInterceptor(log)
+	gRPCServer := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor))
+
 	authgrpc.RegisterServer(gRPCServer, authServer, &cfg)
 	return &App{
 		cfg:        &cfg,

@@ -4,26 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"log/slog"
 	"math/rand"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/grpc/metadata"
 
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
 	"github.com/bmstu-itstech/sso/internal/domain/storage"
-	"github.com/bmstu-itstech/sso/internal/lib/jwt"
 )
 
 var (
-	ErrAppNotFoud    = errors.New("app not found")
+	ErrAppNotFound   = errors.New("app not found")
 	ErrUserNotFound  = errors.New("user not found")
-	ErrNoToken       = errors.New("you have not jwt token")
 	ErrValidToken    = errors.New("token is not valid")
 	ErrUserNotUnique = errors.New("user with this login already exists")
+	ErrTokenExpired  = errors.New("token is expired")
 )
 
 const (
@@ -33,23 +31,29 @@ const (
 type ServiceUser struct {
 	cfg          *config.Config
 	log          *slog.Logger
+	tokenService TokenService
 	userSaver    UserSaver
 	userProvider UserProvider
 	appProvider  AppProvider
 	tokenTTL     time.Duration
 }
 
-func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv AppProvider, cfg *config.Config) *ServiceUser {
+func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv AppProvider, tokenService TokenService, cfg *config.Config) *ServiceUser {
 	return &ServiceUser{
 		cfg:          cfg,
 		log:          log,
 		userSaver:    usrSaver,
 		userProvider: usrProv,
+		tokenService: tokenService,
 		tokenTTL:     cfg.JWT.TokenTTL,
 		appProvider:  appProv,
 	}
 }
 
+type TokenService interface {
+	NewToken(ctx context.Context, model models.TokenModel) (token string, err error)
+	ParseTokenApp(ctx context.Context, secretApp string) (app models.TokenInfo, err error)
+}
 type UserSaver interface {
 	SaveUser(ctx context.Context, login string, password []byte, email string, fullName string, userId int64) (err error)
 	UserNewPassword(ctx context.Context, userId int64, newPassword []byte) (err error)
@@ -57,18 +61,18 @@ type UserSaver interface {
 }
 
 type UserProvider interface {
-	UserByLogin(ctx context.Context, login string) (user models.User, err error)
-	UserById(ctx context.Context, userId int64) (user models.User, err error)
+	UserByLogin(ctx context.Context, login string) (user models.UserRepository, err error)
+	UserById(ctx context.Context, userId int64) (user models.UserRepository, err error)
 	UserIsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error)
-	UsersAll(ctx context.Context) (users []models.User, err error)
+	UsersAll(ctx context.Context) (users []models.UserRepository, err error)
 }
 
 type AppProvider interface {
-	App(ctx context.Context, appId int32) (models.App, error)
+	App(ctx context.Context, appId int32) (models.AppRepos, error)
 }
 
 func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, email, fullName string) (userId int64, err error) {
-	const op = "auth.RegisterNewUser"
+	const op = "service.RegisterNewUser"
 
 	log := s.log.With(slog.String("op", op), slog.String("login", login))
 	log.Info("registering user")
@@ -93,13 +97,12 @@ func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, emai
 }
 
 func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, password string) (token string, err error) {
-	const op = "auth.Login"
+	const op = "service.Login"
 	log := s.log.With(slog.String("op", op), slog.String("login", login))
 
 	log.Info("logging in")
 
 	user, err := s.userProvider.UserByLogin(ctx, login)
-	fmt.Println(user)
 
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
@@ -108,7 +111,7 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 		}
 		if errors.Is(err, storage.ErrAppNotFound) {
 			log.Warn("app not found", err)
-			return "", ErrAppNotFoud
+			return "", ErrAppNotFound
 		}
 
 		log.Error("failed to login", err)
@@ -122,20 +125,24 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 
 	log.Info("user logged in")
 
+	var jwtModel models.TokenModel
 	if appId == appIdSSO {
-		token, err = jwt.NewToken(user, models.App{Id: 0, Secret: s.cfg.JWT.Secret}, s.cfg.JWT.TokenTTL)
-		return token, err
+		jwtModel.AppId = appIdSSO
+		jwtModel.Secret = s.cfg.JWT.Secret
+	} else {
+		app, err := s.appProvider.App(ctx, appId)
+		if err != nil {
+			log.Error("failed to get app", err.Error())
+			return "", fmt.Errorf("%s: %w", op, err)
+		}
+		jwtModel.AppId = app.Id
+		jwtModel.Secret = app.Secret
 	}
+	jwtModel.Uid = user.ID
 
-	app, err := s.appProvider.App(ctx, appId)
+	token, err = s.tokenService.NewToken(ctx, jwtModel)
 	if err != nil {
-		log.Error("failed to get app", err)
-		return "", fmt.Errorf("%s: %w", op, err)
-	}
-
-	token, err = jwt.NewToken(user, app, s.tokenTTL)
-	if err != nil {
-		log.Error("failed to generate token", err)
+		log.Error("failed to generate token", err.Error())
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -144,7 +151,7 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 }
 
 func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error) {
-	const op = "auth.IsAdmin"
+	const op = "service.IsAdmin"
 
 	log := s.log.With(slog.String("op", op), slog.Int64("user_id", userId))
 
@@ -160,24 +167,32 @@ func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, 
 	return isAdmin, nil
 }
 
-func (s *ServiceUser) GetUserInfo(ctx context.Context, userId int64) (user models.User, err error) {
-	const op = "auth.GetUserInfo"
+func (s *ServiceUser) UserInfo(ctx context.Context, userId int64) (models.UserServices, error) {
+	const op = "service.UserInfo"
 
 	log := s.log.With(slog.String("op", op), slog.Int64("user_id", userId))
 	log.Info("getting user info")
 
-	user, err = s.userProvider.UserById(ctx, userId)
-	log.Info("User: ", user)
+	user, err := s.userProvider.UserById(ctx, userId)
 	if err != nil {
 		log.Error("failed to get user info", err)
-		return models.User{}, fmt.Errorf("%s: %w", op, err)
+		return models.UserServices{}, fmt.Errorf("%s: %w", op, err)
 	}
+	log.Info("UserServices: ", slog.Int64("id", user.ID), slog.String("login", user.Login))
 
-	return user, nil
+	return models.UserServices{
+		ID:        user.ID,
+		Login:     user.Login,
+		Email:     user.Email,
+		FullName:  user.FullName,
+		IsAdmin:   user.IsAdmin,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}, nil
 }
 
 func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) {
-	const op = "auth.DeleteUser"
+	const op = "service.DeleteUser"
 	log := s.log.With(slog.String("op", op))
 	log.Info("deleting user")
 
@@ -194,7 +209,7 @@ func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) 
 }
 
 func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassword string) (err error) {
-	const op = "auth.UpdatePassword"
+	const op = "service.UpdatePassword"
 	log := s.log.With(slog.String("op", op))
 	log.Info("updating user password")
 
@@ -216,56 +231,106 @@ func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassw
 	return nil
 }
 
-func (s *ServiceUser) GetAllUsers(ctx context.Context) (users []models.User, err error) {
-	const op = "auth.GetAllUsers"
+func (s *ServiceUser) UsersAll(ctx context.Context) ([]models.UserServices, error) {
+	const op = "service.UsersAll"
 	log := s.log.With(slog.String("op", op))
 	log.Info("getting all users")
 
-	users, err = s.userProvider.UsersAll(ctx)
+	usersRepos, err := s.userProvider.UsersAll(ctx)
 	if err != nil {
 		log.Error("failed to get all users", err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-	return users, nil
+	usersServices := make([]models.UserServices, len(usersRepos))
+	for i, userRepo := range usersRepos {
+		usersServices[i] = models.UserServices{
+			ID:        userRepo.ID,
+			Login:     userRepo.Login,
+			Email:     userRepo.Email,
+			FullName:  userRepo.FullName,
+			IsAdmin:   userRepo.IsAdmin,
+			CreatedAt: userRepo.CreatedAt,
+			UpdatedAt: userRepo.UpdatedAt,
+		}
+	}
+	return usersServices, nil
 }
 
-func (s *ServiceUser) UpdateTokenApp(ctx context.Context) (string, error) {
-	md, _ := metadata.FromIncomingContext(ctx)
-	authHeader := md.Get("authorization")
-	if len(authHeader) == 0 {
-		s.log.Warn("JWT token not found")
-		return "", ErrNoToken
+// UpdateTokenApp generates a new token for the given appId.
+//
+// Note: The function signature was changed to accept appId as a parameter,
+// instead of extracting it from context metadata. This change was made to
+// improve clarity and security by making the required appId explicit.
+// Callers must now provide appId directly when calling this function.
+// If you previously relied on context metadata for appId, update your code
+// to pass appId as an argument. This change may affect existing callers.
+func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, error) {
+	const op = "service.UpdateTokenApp"
+	log := s.log.With(slog.String("op", op))
+
+	var appSecret string
+	if appId == appIdSSO {
+		appSecret = s.cfg.JWT.Secret
+	} else {
+		app, err := s.appProvider.App(ctx, appId)
+		if err != nil {
+			log.Warn("failed to get app: ", err.Error())
+			return "", ErrAppNotFound
+		}
+		appSecret = app.Secret
 	}
 
-	jwtString := authHeader[0]
-	jwtString = strings.TrimPrefix(jwtString, "Bearer ")
-	appId, err := jwt.ParseAppId(jwtString)
+	tokenResp, err := s.tokenService.ParseTokenApp(ctx, appSecret)
 	if err != nil {
-		s.log.Warn("failed to parse token: %w", err)
+		log.Warn("failed to parse token: ", err.Error())
 		return "", ErrValidToken
 	}
 
-	app, err := s.appProvider.App(ctx, appId)
+	tokenNew, err := s.tokenService.NewToken(
+		ctx,
+		models.TokenModel{
+			AppId:  appId,
+			Uid:    tokenResp.Uid,
+			Secret: appSecret,
+		})
 	if err != nil {
-		s.log.Warn("failed to get app: %w", err)
-		return "", ErrValidToken
-	}
-
-	tokenMap, err := jwt.ParseTokenApp(jwtString, app.Secret)
-	if err != nil {
-		s.log.Warn("failed to parse token: %w", err)
-		return "", ErrValidToken
-	}
-
-	tokenNew, err := jwt.NewToken(
-		models.User{ID: tokenMap.Uid},
-		app, s.tokenTTL)
-
-	if err != nil {
-		s.log.Warn("failed to generate token: %w", err)
+		log.Warn("failed to generate token: ", err.Error())
 		return "", ErrValidToken
 	}
 
 	return tokenNew, nil
 
+}
+
+// SignIn Функция, которая отвечает за валидацию токена, создана, чтобы снять ответственность
+// за валидацию токенов с прикладного слоя
+func (s *ServiceUser) SignIn(ctx context.Context, appId int32) (int64, error) {
+	const op = "service.SignIn"
+	log := s.log.With(slog.String("op", op))
+
+	appSecret := s.cfg.JWT.Secret
+	if appId != appIdSSO {
+		app, err := s.appProvider.App(ctx, appId)
+		if err != nil {
+			log.Warn("failed to get app", err.Error())
+			return 0, ErrAppNotFound
+		}
+		appSecret = app.Secret
+	}
+
+	appModel, err := s.tokenService.ParseTokenApp(ctx, appSecret)
+	if err != nil {
+		log.Warn("failed to parse token", err.Error())
+		if errors.Is(err, jwt.ErrSignatureInvalid) {
+			return 0, ErrValidToken
+		}
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return 0, ErrTokenExpired
+		}
+		return 0, err
+	}
+
+	log.Info("user sing in", slog.Int64("user_id", appModel.Uid))
+
+	return appModel.Uid, nil
 }

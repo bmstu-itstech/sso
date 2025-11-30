@@ -2,7 +2,18 @@ package models
 
 import "time"
 
-type User struct {
+type UserServices struct {
+	ID           int64
+	Login        string
+	Email        string
+	FullName     string
+	PasswordHash []byte
+	IsAdmin      bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type UserRepository struct {
 	ID           int64     `db:"id"`
 	Login        string    `db:"login"`
 	Email        string    `db:"email"`

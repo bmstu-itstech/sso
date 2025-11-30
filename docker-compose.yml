@@ -25,7 +25,7 @@ services:
     container_name: sso-migrate
     command:
       - "-path=/migrations"
-      - "-database=postgres://${POSTGRES_USER:-dbuser}:${POSTGRES_PASSWORD:-dbpass123}@postgres:5432/${POSTGRES_DB:-myapp_db}?sslmode=disable"
+      - "-database=postgres://${POSTGRES_USER:-dbuser}:${POSTGRES_PASSWORD:-dbpass123}@postgres:5432/${POSTGRES_DB:-myapp_db}?sslmode=${POSTGRES_SSLMODE:-disable}"
       - "up"
     depends_on:
       postgres:
@@ -44,8 +44,10 @@ services:
     env_file:
       - .env
     environment:
+      POSTGRES_URI: ""
+
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+
       POSTGRES_EXTERNAL_PORT: 5432
     ports:
       - "${GRPC_PORT:-8080}:8080"

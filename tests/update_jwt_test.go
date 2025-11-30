@@ -1,14 +1,13 @@
-package function_tests
+package tests
 
 import (
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/function_tests/suite"
+	"github.com/bmstu-itstech/sso/tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"strconv"
 	"testing"
 )
@@ -56,7 +55,7 @@ func TestUpdateToken_User(t *testing.T) {
 	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+oldToken))
 
 	// Обновляем токен
-	respUpdateToken, err := st.AuthClient.UpdateToken(ctxWithToken, &emptypb.Empty{})
+	respUpdateToken, err := st.AuthClient.UpdateToken(ctxWithToken, &ssov1.UpdateTokenRequest{AppId: appId})
 	require.NoError(t, err)
 	assert.NotEmpty(t, respUpdateToken.GetToken())
 

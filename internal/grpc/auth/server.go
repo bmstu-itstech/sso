@@ -4,40 +4,44 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
+	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
-	"github.com/bmstu-itstech/sso/internal/lib/jwt"
 	"github.com/bmstu-itstech/sso/internal/services"
 )
 
-type Auth struct {
-	Login           func(ctx context.Context, appId int32, login string, password string) (token string, err error)
-	RegisterNewUser func(ctx context.Context, login, password, email, fullName string) (userId int64, err error)
-	IsAdmin         func(ctx context.Context, userId int64) (isAdmin bool, err error)
-	UserInfo        func(ctx context.Context, id int64) (user models.User, err error)
-	UpdatePassword  func(ctx context.Context, id int64, newPassword string) error
-	DeleteUser      func(ctx context.Context, userId int64) error
-	UsersAll        func(ctx context.Context) ([]models.User, error)
-	UpdateTokenApp  func(ctx context.Context) (newToken string, err error)
+const ssoAppId = 0
+
+type Auth interface {
+	Login(ctx context.Context, appId int32, login string, password string) (token string, err error)
+	RegisterNewUser(ctx context.Context, login, password, email, fullName string) (userId int64, err error)
+
+	UpdatePassword(ctx context.Context, id int64, newPassword string) error
+	DeleteUser(ctx context.Context, userId int64) error
+
+	SignIn(ctx context.Context, appId int32) (userId int64, err error)
+	IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error)
+
+	UserInfo(ctx context.Context, id int64) (user models.UserServices, err error)
+	UsersAll(ctx context.Context) ([]models.UserServices, error)
+
+	UpdateTokenApp(ctx context.Context, appId int32) (newToken string, err error)
 }
 
 type serverApi struct {
 	ssov1.UnimplementedAuthServer
-	auth *Auth
+	auth Auth
 	cfg  *config.Config
 }
 
-func RegisterServer(gRPC *grpc.Server, auth *Auth, cfg *config.Config) {
+func RegisterServer(gRPC *grpc.Server, auth Auth, cfg *config.Config) {
 	ssov1.RegisterAuthServer(gRPC, &serverApi{auth: auth, cfg: cfg})
 }
 
@@ -55,7 +59,7 @@ func (s *serverApi) Login(ctx context.Context, req *ssov1.LoginRequest) (*ssov1.
 		if errors.Is(err, services.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, "user not found")
 		}
-		if errors.Is(err, services.ErrAppNotFoud) {
+		if errors.Is(err, services.ErrAppNotFound) {
 			return nil, status.Error(codes.NotFound, "app not found")
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("login failed"))
@@ -86,7 +90,7 @@ func (s *serverApi) IsAdmin(ctx context.Context, req *ssov1.IsAdminRequest) (*ss
 	if err := validateIsAdmin(req); err != nil {
 		return nil, err
 	}
-	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+	userId, err := s.SignIn(ctx, ssoAppId) // Id пользователя, который обращается к серверу
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +115,7 @@ func (s *serverApi) IsAdmin(ctx context.Context, req *ssov1.IsAdminRequest) (*ss
 }
 
 func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*ssov1.User, error) {
-	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+	userId, err := s.SignIn(ctx, ssoAppId) // Id пользователя, который обращается к серверу
 	if err != nil {
 		return nil, err
 	}
@@ -142,27 +146,13 @@ func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*
 	}, nil
 }
 
-func (s *serverApi) UpdateToken(ctx context.Context, _ *emptypb.Empty) (*ssov1.UpdateTokenResponse, error) {
-	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
-
+func (s *serverApi) UpdateToken(ctx context.Context, req *ssov1.UpdateTokenRequest) (*ssov1.UpdateTokenResponse, error) {
+	userId, err := s.SignIn(ctx, req.AppId) // Id пользователя, который обращается к серверу
 	if err != nil {
-		newToken, err := s.auth.UpdateTokenApp(ctx)
-		if err != nil {
-			if errors.Is(err, services.ErrNoToken) {
-				return nil, status.Error(codes.InvalidArgument, "no token")
-			}
-			if errors.Is(err, services.ErrValidToken) {
-				return nil, status.Error(codes.InvalidArgument, "valid token")
-			}
-			return nil, status.Error(codes.Internal, "update token failed")
-		}
-		return &ssov1.UpdateTokenResponse{
-			Token: newToken,
-		}, nil
+		return nil, err
 	}
-
 	ctx = context.WithValue(ctx, "uid", userId)
-	token, err := jwt.NewToken(models.User{ID: userId}, models.App{Id: 0, Secret: s.getTokenJwtSSO()}, s.cfg.JWT.TokenTTL)
+	token, err := s.auth.UpdateTokenApp(ctx, req.GetAppId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "update token failed")
 	}
@@ -172,7 +162,7 @@ func (s *serverApi) UpdateToken(ctx context.Context, _ *emptypb.Empty) (*ssov1.U
 
 }
 func (s *serverApi) UsersInfo(ctx context.Context, _ *emptypb.Empty) (*ssov1.Users, error) {
-	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+	userId, err := s.SignIn(ctx, ssoAppId) // Id пользователя, который обращается к серверу
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +200,8 @@ func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswor
 	if err := validateUpdatePassword(req); err != nil {
 		return nil, err
 	}
-	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+
+	userId, err := s.SignIn(ctx, ssoAppId) // Id пользователя, который обращается к серверу
 	if err != nil {
 		return nil, err
 	}
@@ -237,9 +228,9 @@ func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswor
 }
 
 func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest) (*ssov1.RemoveUserResponse, error) {
-	userId, err := s.getUserId(ctx) // Id пользователя, который обращается к серверу
+	userId, err := s.SignIn(ctx, ssoAppId) // Id пользователя, который обращается к серверу
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "no jwt token")
+		return nil, err
 	}
 	ctx = context.WithValue(ctx, "uid", userId)
 
@@ -263,30 +254,16 @@ func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest
 	}, nil
 }
 
-func (s *serverApi) getUserId(ctx context.Context) (int64, error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return 0, status.Error(codes.InvalidArgument, "no metadata")
-	}
-
-	authHeaders := md.Get("authorization")
-	if len(authHeaders) == 0 {
-		return 0, status.Error(codes.Unauthenticated, "authorization is required")
-	}
-
-	jwtString := authHeaders[0]
-	jwtString = strings.TrimPrefix(jwtString, "Bearer ")
-	userId, err := jwt.ParseTokenSSO(jwtString, s.getTokenJwtSSO())
-
+func (s *serverApi) SignIn(ctx context.Context, appId int32) (int64, error) {
+	userId, err := s.auth.SignIn(ctx, appId)
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return 0, status.Error(codes.Unauthenticated, "token is expired")
+		if errors.Is(err, services.ErrAppNotFound) {
+			return 0, status.Error(codes.NotFound, "app not found")
 		}
-		return 0, status.Error(codes.Unauthenticated, "token is invalid")
+		if errors.Is(err, services.ErrTokenExpired) {
+			return 0, status.Error(codes.Unauthenticated, "JWT token expired")
+		}
+		return 0, status.Error(codes.InvalidArgument, "JWT token invalid")
 	}
 	return userId, nil
-}
-
-func (s *serverApi) getTokenJwtSSO() string {
-	return s.cfg.JWT.Secret
 }

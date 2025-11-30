@@ -1,11 +1,11 @@
-package function_tests
+package tests
 
 import (
 	"strconv"
 	"testing"
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/function_tests/suite"
+	"github.com/bmstu-itstech/sso/tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -98,7 +98,7 @@ func TestUserInfo_AdminSelf(t *testing.T) {
 	assert.True(t, respUserInfo.GetIsAdmin())
 }
 
-// TODO: админ к пользователю
+// админ к пользователю
 func TestUserInfo_AdminToUser(t *testing.T) {
 	ctx, st := suite.New(t)
 

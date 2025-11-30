@@ -6,6 +6,9 @@ github.com/BOBAvov/protos_sso v0.0.13 h1:hSVymscozgioomXS+umRxJrrskME7WPSwSz3ddg
 github.com/BOBAvov/protos_sso v0.0.13/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
 github.com/BOBAvov/protos_sso v0.0.14 h1:Z/cymijbFZ8Aor0h6O2xVGe33UA8oajuwVv3HoP8UcM=
 github.com/BOBAvov/protos_sso v0.0.14/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
+github.com/BOBAvov/protos_sso v0.0.15/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
+github.com/BOBAvov/protos_sso v0.0.17 h1:Dvhz4WnB8LNOKA5VE5RCCKWVqML1bdj6/Ck1f2vPKeU=
+github.com/BOBAvov/protos_sso v0.0.17/go.mod h1:+bhsk/b46aqFYW3w8q01IxAiL914SpU5UicLhg/Nrx0=
 github.com/ThreeDotsLabs/watermill v1.5.1 h1:t5xMivyf9tpmU3iozPqyrCZXHvoV1XQDfihas4sV0fY=
 github.com/ThreeDotsLabs/watermill v1.5.1/go.mod h1:Uop10dA3VeJWsSvis9qO3vbVY892LARrKAdki6WtXS4=
 github.com/brianvoe/gofakeit/v6 v6.28.0 h1:Xib46XXuQfmlLS2EXRuJpqcw8St6qSZz75OUo0tgAW4=

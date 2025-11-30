@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -19,9 +18,6 @@ func main() {
 	}
 
 	cfg := config.GetConfig()
-	if cfg.ENV == "local" {
-		fmt.Println(cfg)
-	}
 
 	logger := logs.NewLogger(cfg.ENV)
 	logger.Info("Server started")
