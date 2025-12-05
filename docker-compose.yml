@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine3.18
+    container_name: sso-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dbpass123}
+      POSTGRES_DB: ${POSTGRES_DB:-myapp_db}
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 5
+      start_period: 10s
+      timeout: 5s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sso-network
+    restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate:latest
+    container_name: sso-migrate
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${POSTGRES_USER:-dbuser}:${POSTGRES_PASSWORD:-dbpass123}@postgres:5432/${POSTGRES_DB:-myapp_db}?sslmode=${POSTGRES_SSLMODE:-disable}"
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    networks:
+      - sso-network
+    restart: "no"
+
+  sso:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sso-app
+    env_file:
+      - .env
+    environment:
+      POSTGRES_URI: ""
+
+      POSTGRES_HOST: postgres
+
+      POSTGRES_EXTERNAL_PORT: 5432
+    ports:
+      - "${GRPC_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - sso-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  sso-network:
+    driver: bridge
