@@ -46,7 +46,7 @@ func TestUserInfo_UserSelf(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", strconv.FormatInt(respRegister.GetUserId(), 10)))
 
 	respUserInfo, err := st.AuthClient.UserInfo(ctxWithToken, &ssov1.UserInfoRequest{
 		UserId: respRegister.GetUserId(),
@@ -87,7 +87,7 @@ func TestUserInfo_AdminSelf(t *testing.T) {
 	require.NoError(t, err)
 
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", adminUserIdStr))
 
 	respUserInfo, err := st.AuthClient.UserInfo(ctxWithToken, &ssov1.UserInfoRequest{
 		UserId: adminUserId,
@@ -130,8 +130,19 @@ func TestUserInfo_AdminToUser(t *testing.T) {
 	token := respLogin.GetToken()
 	require.NotEmpty(t, token)
 
+	// Парсим токен, чтобы получить uid админа
+	tokenParsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		return []byte(ssoSecret), nil
+	})
+	require.NoError(t, err)
+
+	claims, ok := tokenParsed.Claims.(jwt.MapClaims)
+	require.True(t, ok)
+
+	adminUserIdStr := claims["uid"].(string)
+
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", adminUserIdStr))
 
 	// Админ запрашивает информацию о пользователе
 	respUserInfo, err := st.AuthClient.UserInfo(ctxWithToken, &ssov1.UserInfoRequest{

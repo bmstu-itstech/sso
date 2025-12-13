@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
+	"google.golang.org/grpc/metadata"
 	"log/slog"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -52,8 +53,9 @@ func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv App
 
 type TokenService interface {
 	NewToken(ctx context.Context, model models.TokenModel) (token string, err error)
-	ParseTokenApp(ctx context.Context, secretApp string) (app models.TokenInfo, err error)
+	//ParseTokenApp(ctx context.Context, secretApp string) (app models.TokenInfo, err error)
 }
+
 type UserSaver interface {
 	SaveUser(ctx context.Context, login string, password []byte, email string, fullName string, userId int64) (err error)
 	UserNewPassword(ctx context.Context, userId int64, newPassword []byte) (err error)
@@ -72,7 +74,7 @@ type AppProvider interface {
 }
 
 func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, email, fullName string) (userId int64, err error) {
-	const op = "service.RegisterNewUser"
+	const op = "services.RegisterNewUser"
 
 	log := s.log.With(slog.String("op", op), slog.String("login", login))
 	log.Info("registering user")
@@ -97,9 +99,9 @@ func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, emai
 }
 
 func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, password string) (token string, err error) {
-	const op = "service.Login"
-	log := s.log.With(slog.String("op", op), slog.String("login", login))
+	const op = "services.Login"
 
+	log := s.log.With(slog.String("op", op), slog.String("login", login))
 	log.Info("logging in")
 
 	user, err := s.userProvider.UserByLogin(ctx, login)
@@ -151,10 +153,9 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 }
 
 func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error) {
-	const op = "service.IsAdmin"
+	const op = "services.IsAdmin"
 
 	log := s.log.With(slog.String("op", op), slog.Int64("user_id", userId))
-
 	log.Info("checking user is admin")
 
 	isAdmin, err = s.userProvider.UserIsAdmin(ctx, userId)
@@ -168,7 +169,7 @@ func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, 
 }
 
 func (s *ServiceUser) UserInfo(ctx context.Context, userId int64) (models.UserServices, error) {
-	const op = "service.UserInfo"
+	const op = "services.UserInfo"
 
 	log := s.log.With(slog.String("op", op), slog.Int64("user_id", userId))
 	log.Info("getting user info")
@@ -192,7 +193,8 @@ func (s *ServiceUser) UserInfo(ctx context.Context, userId int64) (models.UserSe
 }
 
 func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) {
-	const op = "service.DeleteUser"
+	const op = "services.DeleteUser"
+
 	log := s.log.With(slog.String("op", op))
 	log.Info("deleting user")
 
@@ -209,7 +211,8 @@ func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) 
 }
 
 func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassword string) (err error) {
-	const op = "service.UpdatePassword"
+	const op = "services.UpdatePassword"
+
 	log := s.log.With(slog.String("op", op))
 	log.Info("updating user password")
 
@@ -232,7 +235,8 @@ func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassw
 }
 
 func (s *ServiceUser) UsersAll(ctx context.Context) ([]models.UserServices, error) {
-	const op = "service.UsersAll"
+	const op = "services.UsersAll"
+
 	log := s.log.With(slog.String("op", op))
 	log.Info("getting all users")
 
@@ -265,8 +269,14 @@ func (s *ServiceUser) UsersAll(ctx context.Context) ([]models.UserServices, erro
 // If you previously relied on context metadata for appId, update your code
 // to pass appId as an argument. This change may affect existing callers.
 func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, error) {
-	const op = "service.UpdateTokenApp"
+	const op = "services.UpdateTokenApp"
 	log := s.log.With(slog.String("op", op))
+
+	userId, err := s.SignIn(ctx, appId)
+	if err != nil {
+		log.Warn("failed to sign in: ", err.Error())
+		return "", err
+	}
 
 	var appSecret string
 	if appId == appIdSSO {
@@ -280,17 +290,11 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, 
 		appSecret = app.Secret
 	}
 
-	tokenResp, err := s.tokenService.ParseTokenApp(ctx, appSecret)
-	if err != nil {
-		log.Warn("failed to parse token: ", err.Error())
-		return "", ErrValidToken
-	}
-
 	tokenNew, err := s.tokenService.NewToken(
 		ctx,
 		models.TokenModel{
 			AppId:  appId,
-			Uid:    tokenResp.Uid,
+			Uid:    userId,
 			Secret: appSecret,
 		})
 	if err != nil {
@@ -305,32 +309,27 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, 
 // SignIn Функция, которая отвечает за валидацию токена, создана, чтобы снять ответственность
 // за валидацию токенов с прикладного слоя
 func (s *ServiceUser) SignIn(ctx context.Context, appId int32) (int64, error) {
-	const op = "service.SignIn"
+	const op = "services.SignIn"
+
 	log := s.log.With(slog.String("op", op))
 
-	appSecret := s.cfg.JWT.Secret
-	if appId != appIdSSO {
-		app, err := s.appProvider.App(ctx, appId)
-		if err != nil {
-			log.Warn("failed to get app", err.Error())
-			return 0, ErrAppNotFound
-		}
-		appSecret = app.Secret
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		log.Warn("missing metadata in context")
+		return 0, ErrValidToken
 	}
-
-	appModel, err := s.tokenService.ParseTokenApp(ctx, appSecret)
+	userId := md.Get("x-user-id")
+	if len(userId) == 0 {
+		log.Warn("missing uid in metadata")
+		return 0, ErrValidToken
+	}
+	userIdInt64, err := strconv.ParseInt(userId[0], 10, 64)
 	if err != nil {
-		log.Warn("failed to parse token", err.Error())
-		if errors.Is(err, jwt.ErrSignatureInvalid) {
-			return 0, ErrValidToken
-		}
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return 0, ErrTokenExpired
-		}
-		return 0, err
+		log.Warn("invalid uid in metadata", err)
+		return 0, ErrValidToken
 	}
 
-	log.Info("user sing in", slog.Int64("user_id", appModel.Uid))
+	log.Info("user sing in", slog.Int64("user_id", userIdInt64))
 
-	return appModel.Uid, nil
+	return userIdInt64, nil
 }

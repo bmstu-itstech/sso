@@ -1,11 +1,13 @@
 package tests
 
 import (
+	"strconv"
 	"testing"
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"github.com/bmstu-itstech/sso/tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -43,7 +45,7 @@ func TestUpdatePassword_UserSelf(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", strconv.FormatInt(respRegister.GetUserId(), 10)))
 
 	respUpdatePassword, err := st.AuthClient.UpdatePassword(ctxWithToken, &ssov1.UpdatePasswordRequest{
 		UserId:      respRegister.GetUserId(),
@@ -95,8 +97,19 @@ func TestUpdatePassword_AdminToUser(t *testing.T) {
 	token := respLogin.GetToken()
 	require.NotEmpty(t, token)
 
+	// Парсим токен, чтобы получить uid админа
+	tokenParsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		return []byte(ssoSecret), nil
+	})
+	require.NoError(t, err)
+
+	claims, ok := tokenParsed.Claims.(jwt.MapClaims)
+	require.True(t, ok)
+
+	adminUserIdStr := claims["uid"].(string)
+
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+token))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", adminUserIdStr))
 
 	// Админ обновляет пароль пользователя
 	respUpdatePassword, err := st.AuthClient.UpdatePassword(ctxWithToken, &ssov1.UpdatePasswordRequest{

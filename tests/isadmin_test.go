@@ -58,7 +58,7 @@ func TestIsAdminIsNot(t *testing.T) {
 	assert.Equal(t, strconv.FormatInt(respRegister.GetUserId(), 10), claims["uid"].(string))
 
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+respLogin.GetToken()))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", strconv.FormatInt(respRegister.GetUserId(), 10)))
 	respIsAdmin, err := st.AuthClient.IsAdmin(ctxWithToken, &ssov1.IsAdminRequest{
 		UserId: respRegister.GetUserId(),
 	})

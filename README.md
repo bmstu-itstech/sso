@@ -1,879 +1,170 @@
-# SSO - Система единого входа
+# SSO Service
 
-Система единого входа (Single Sign-On) для проектов ITS TECH. Предоставляет централизованную аутентификацию и авторизацию через gRPC API с поддержкой JWT токенов.
+Микросервис централизованной аутентификации и авторизации, реализующий протокол SSO (Single Sign-On). Сервис предоставляет gRPC API для регистрации, входа пользователей, управления правами доступа и валидации JWT-токенов. Написан на Go, использует PostgreSQL в качестве хранилища данных.
 
-## Содержание
+## 🚀 Ключевые особенности
 
-- [Возможности](#возможности)
-- [Архитектура](#архитектура)
-- [Требования](#требования)
-- [Варианты запуска](#варианты-запуска)
-- [API Reference](#api-reference)
-- [Особенности](#особенности)
-- [Конфигурация](#конфигурация)
-- [Тестирование](#тестирование)
+- **gRPC API**: Высокопроизводительный интерфейс на базе Protocol Buffers для взаимодействия между сервисами.
+- **JWT Authentication**: Выпуск и валидация Access-токенов (HMAC SHA256).
+- **Secure Storage**: Безопасное хранение паролей с использованием bcrypt.
+- **Role-Based Access Control (RBAC)**: Поддержка ролей (Admin/User) для разграничения доступа.
+- **PostgreSQL**: Надежное хранение данных пользователей и приложений.
+- **Interceptors**: Встроенные механизмы логирования и восстановления после паники.
+- **Configurable**: Гибкая настройка через YAML-конфиг и переменные окружения.
 
-## Возможности
+## 🛠 Предварительные требования
 
-### 🔐 Аутентификация и авторизация
+Для запуска и разработки вам понадобятся:
 
-- **Регистрация пользователей** - создание новых учетных записей с валидацией данных
-- **Вход в систему** - аутентификация с получением JWT токена для конкретного приложения
-- **Обновление токена** - получение нового JWT токена без повторной аутентификации
-- **Мультиприложенность** - поддержка нескольких приложений с разными секретами для токенов
+- **Go** (версия 1.25+)
+- **Docker** и **Docker Compose**
+- **Make** (опционально, для удобства запуска команд)
+- **gRPC Client** (например, [BloomRPC](https://github.com/bloomrpc/bloomrpc) или [grpcurl](https://github.com/fullstorydev/grpcurl)) для тестирования.
 
-### 👤 Управление пользователями
+## ⚡ Быстрый старт
 
-- **Информация о пользователе** - получение данных профиля (сам пользователь или администратор)
-- **Обновление пароля** - изменение пароля пользователем или администратором
-- **Удаление пользователя** - удаление аккаунта (самостоятельно или администратором)
-- **Список пользователей** - получение списка всех пользователей (только для администраторов)
+### 1. Клонирование и настройка
 
-### 🛡️ Административные функции
-
-- **Проверка прав администратора** - определение статуса администратора пользователя
-- **Административный доступ** - расширенные права для управления пользователями
-- **Безопасность** - многоуровневая система проверки прав доступа
-
-### 🔍 Утилиты
-
-- **Ping** - проверка доступности сервиса
-- **Health checks** - мониторинг состояния сервиса
-
-## Архитектура
-
-### Технологический стек
-
-- **Язык**: Go 1.25+
-- **Протокол**: gRPC
-- **База данных**: PostgreSQL 16
-- **Аутентификация**: JWT (JSON Web Tokens)
-- **Хеширование паролей**: bcrypt
-- **Конфигурация**: Viper (поддержка .env файлов и переменных окружения)
-- **Миграции**: migrate/migrate
-- **Контейнеризация**: Docker, Docker Compose
-
-### Структура проекта
-
-```
-sso/
-├── cmd/sso/           # Точка входа приложения
-├── internal/
-│   ├── app/           # Инициализация приложения
-│   ├── config/        # Конфигурация
-│   ├── domain/        # Доменные модели
-│   ├── grpc/          # gRPC handlers
-│   ├── lib/           # Утилиты (JWT, генерация)
-│   ├── logs/          # Логирование
-│   ├── repository/    # Работа с БД
-│   └── services/      # Бизнес-логика
-├── migrations/        # SQL миграции
-├── tests/             # Тесты
-├── docker-compose.yml # Docker Compose конфигурация
-└── Dockerfile         # Docker образ
+```bash
+git clone https://github.com/bmstu-itstech/sso.git
+cd sso
+# Создайте файл конфигурации (если используется локальный запуск без Docker)
+# cp config/local.yaml config/config.yaml
 ```
 
-## Требования
+### 2. Запуск через Docker Compose
 
-### Для запуска через Docker Compose
-
-- Docker 20.10+
-- Docker Compose 2.0+
-
-### Для локального запуска
-
-- Go 1.25+
-- PostgreSQL 16+
-- migrate/migrate (для миграций)
-
-## Варианты запуска
-
-### 1. Docker Compose (рекомендуемый способ)
-
-Самый простой способ запуска всей инфраструктуры одним командой.
-
-#### Подготовка
-
-1. Создайте файл `.env` в корне проекта:
-
-```env
-# Application
-APP_NAME=sso
-ENV=local
-
-# GRPC
-GRPC_PORT=8080
-GRPC_TIMEOUT=10s
-
-# Database
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-POSTGRES_EXTERNAL_PORT=5436
-POSTGRES_DB=myapp_db
-POSTGRES_USER=dbuser
-POSTGRES_PASSWORD=dbpass123
-
-# JWT
-JWT_SECRET=my-secret
-JWT_TOKEN_TTL=12h
-```
-
-2. Запустите все сервисы:
+Это рекомендуемый способ для развертывания локального окружения вместе с базой данных.
 
 ```bash
 docker-compose up -d
 ```
 
-Эта команда автоматически:
-- Создаст сеть для сервисов
-- Запустит PostgreSQL с проверкой здоровья
-- Выполнит миграции базы данных
-- Запустит SSO приложение
+Сервис будет доступен на порту, указанном в конфигурации (по умолчанию `44044`).
 
-#### Управление сервисами
+### 3. Проверка работы
 
 ```bash
-# Просмотр логов
-docker-compose logs -f sso
-
-# Остановка всех сервисов
-docker-compose down
-
-# Остановка с удалением данных БД
-docker-compose down -v
-
-# Пересборка образа приложения
-docker-compose up -d --build sso
-
-# Перезапуск сервиса
-docker-compose restart sso
-
-# Просмотр статуса
-docker-compose ps
+# Пример проверки порта (если установлен netcat)
+nc -zv localhost 44044
 ```
 
-#### Доступ к сервисам
+## 🔌 Интеграция с вашим микросервисом
 
-- **SSO gRPC**: `localhost:8080` (порт настраивается через `GRPC_PORT`)
-- **PostgreSQL**: `localhost:5436` (внешний порт настраивается через `POSTGRES_EXTERNAL_PORT`)
+Ниже приведен пример того, как другой Go-сервис может использовать клиент gRPC для взаимодействия с SSO. В данном примере мы проверяем права администратора для пользователя.
 
-### 2. Локальный запуск с Docker PostgreSQL
+> **Важно:** Для полноценной валидации токена рекомендуется либо использовать общий секретный ключ (для локальной проверки подписи JWT), либо реализовать метод `ValidateToken` в SSO. В примере ниже показан вызов метода `IsAdmin`, который требует валидного токена.
 
-Если вы хотите запустить приложение локально, а базу данных в Docker:
-
-#### Шаг 1: Запуск PostgreSQL в Docker
-
-```bash
-docker run --name=sso-db \
-  -e POSTGRES_PASSWORD='qwerty' \
-  -e POSTGRES_USER='postgres' \
-  -e POSTGRES_DB='postgres' \
-  -p 5436:5432 \
-  -d postgres:16-alpine3.18
-```
-
-#### Шаг 2: Выполнение миграций
-
-```bash
-migrate -path ./migrations \
-  -database 'postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable' \
-  up
-```
-
-#### Шаг 3: Настройка .env файла
-
-```env
-ENV=local
-GRPC_PORT=8080
-GRPC_TIMEOUT=10s
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5436
-POSTGRES_EXTERNAL_PORT=5436
-POSTGRES_DB=postgres
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=qwerty
-JWT_SECRET=my-secret
-JWT_TOKEN_TTL=12h
-```
-
-#### Шаг 4: Запуск приложения
-
-```bash
-go run cmd/sso/main.go
-```
-
-### 3. Полностью локальный запуск
-
-Для разработки с локальной PostgreSQL:
-
-#### Требования
-
-1. Установленная PostgreSQL 16
-2. Созданная база данных
-3. Установленные зависимости Go
-
-#### Настройка базы данных
-
-```sql
--- Создание базы данных
-CREATE DATABASE sso_db;
-
--- Создание пользователя (опционально)
-CREATE USER sso_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE sso_db TO sso_user;
-```
-
-#### Выполнение миграций
-
-```bash
-migrate -path ./migrations \
-  -database 'postgres://sso_user:your_password@localhost:5432/sso_db?sslmode=disable' \
-  up
-```
-
-#### Конфигурация .env
-
-```env
-ENV=local
-GRPC_PORT=8080
-GRPC_TIMEOUT=10s
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_EXTERNAL_PORT=5432
-POSTGRES_DB=sso_db
-POSTGRES_USER=sso_user
-POSTGRES_PASSWORD=your_password
-JWT_SECRET=my-secret
-JWT_TOKEN_TTL=12h
-```
-
-#### Запуск
-
-```bash
-# Установка зависимостей
-go mod download
-
-# Запуск приложения
-go run cmd/sso/main.go
-```
-
-### 4. Production запуск
-
-Для production окружения рекомендуется:
-
-1. **Использовать Docker Compose** с production конфигурацией
-2. **Настроить переменные окружения** через secrets management
-3. **Использовать внешнюю PostgreSQL** для высокой доступности
-4. **Настроить мониторинг и логирование**
-5. **Использовать load balancer** перед gRPC сервером
-
-Пример production `.env`:
-
-```env
-ENV=prod
-GRPC_PORT=8080
-GRPC_TIMEOUT=10s
-POSTGRES_HOST=postgres-prod.example.com
-POSTGRES_PORT=5432
-POSTGRES_EXTERNAL_PORT=5432
-POSTGRES_DB=sso_prod
-POSTGRES_USER=sso_prod_user
-POSTGRES_PASSWORD=<secure_password_from_secrets>
-JWT_SECRET=<secure_secret_from_secrets>
-JWT_TOKEN_TTL=1h
-```
-
-## API Reference
-
-### gRPC Endpoints
-
-Все endpoints доступны через gRPC протокол на порту, указанном в `GRPC_PORT`.
-
-#### Ping
-
-Проверка доступности сервиса.
-
-**Request:**
-```protobuf
-Empty
-```
-
-**Response:**
-```protobuf
-Empty
-```
-
-**Пример использования:**
 ```go
-_, err := client.Ping(ctx, &emptypb.Empty{})
-```
+package main
 
----
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
 
-#### Register
+	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+)
 
-Регистрация нового пользователя в системе.
+type SSOClient struct {
+	api ssov1.AuthClient
+}
 
-**Request:**
-```protobuf
-message RegisterRequest {
-  string login = 1;       // Уникальный логин пользователя
-  string password = 2;    // Пароль пользователя
-  string email = 3;       // Email адрес
-  string full_name = 4;   // Полное имя пользователя
+func NewSSOClient(addr string) (*SSOClient, error) {
+	const op = "grpc.NewSSOClient"
+
+	// Используем insecure credentials только для тестов/локальной разработки
+	cc, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return &SSOClient{
+		api: ssov1.NewAuthClient(cc),
+	}, nil
+}
+
+func (c *SSOClient) IsAdmin(ctx context.Context, userID int64) (bool, error) {
+	resp, err := c.api.IsAdmin(ctx, &ssov1.IsAdminRequest{
+		UserId: userID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.IsAdmin, nil
+}
+
+// AuthMiddleware пример middleware, который извлекает токен и делает запрос к SSO
+// Примечание: В реальном сценарии лучше валидировать JWT локально публичным ключом для производительности.
+func (c *SSOClient) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Добавляем токен в метаданные для gRPC запроса
+		md := metadata.New(map[string]string{
+			"authorization": "Bearer " + token,
+		})
+		ctx := metadata.NewOutgoingContext(r.Context(), md)
+
+		// Пример: проверяем, является ли пользователь админом.
+		// Внимание: для этого нужно знать UserID. Обычно он извлекается из claims токена.
+		// Здесь для примера мы используем хардкод или извлекаем из заголовка (небезопасно без проверки подписи).
+		// userID := extractUserIdFromToken(token)
+		var userID int64 = 1 // Заглушка
+
+		isAdmin, err := c.IsAdmin(ctx, userID)
+		if err != nil {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		if !isAdmin {
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+func main() {
+	sso, err := NewSSOClient("localhost:44044")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.HandleFunc("/admin", sso.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Welcome, Admin!"))
+	}))
+
+	log.Println("Service started on :8080")
+	http.ListenAndServe(":8080", nil)
 }
 ```
 
-**Response:**
-```protobuf
-message RegisterResponse {
-  int64 user_id = 1;      // ID созданного пользователя
-}
-```
-
-**Ошибки:**
-- `InvalidArgument` - некорректные данные запроса
-- `Internal` - ошибка при создании пользователя
-
-**Особенности:**
-- Пароль автоматически хешируется с помощью bcrypt
-- Логин должен быть уникальным
-- Email должен быть валидным форматом
-
----
-
-#### Login
-
-Аутентификация пользователя и получение JWT токена.
-
-**Request:**
-```protobuf
-message LoginRequest {
-  int32 app_id = 1;       // ID приложения (0 для SSO, >0 для других приложений)
-  string login = 2;       // Логин пользователя
-  string password = 3;    // Пароль пользователя
-}
-```
-
-**Response:**
-```protobuf
-message LoginResponse {
-  string token = 1;       // JWT токен для приложения
-}
-```
-
-**Ошибки:**
-- `NotFound` - пользователь или приложение не найдены
-- `Internal` - неверный логин или пароль
-
-**Особенности:**
-- Токен для SSO (app_id=0) содержит только `uid` и `exp`
-- Токен для других приложений содержит `uid`, `login`, `email`, `app_id`, `exp`
-- Время жизни токена настраивается через `JWT_TOKEN_TTL`
-- Токен подписывается секретом приложения
-
----
-
-#### UserInfo
-
-Получение информации о пользователе.
-
-**Request:**
-```protobuf
-message UserInfoRequest {
-  int64 user_id = 1;      // ID пользователя
-}
-```
-
-**Response:**
-```protobuf
-message User {
-  int64 user_id = 1;
-  string login = 2;
-  string email = 3;
-  string full_name = 4;
-  bool is_admin = 5;
-  google.protobuf.Timestamp create_at = 6;
-  google.protobuf.Timestamp update_at = 7;
-}
-```
-
-**Ошибки:**
-- `Unauthenticated` - отсутствует или невалидный JWT токен
-- `PermissionDenied` - пользователь не имеет прав на просмотр данного профиля
-- `Internal` - ошибка при получении информации
-
-**Особенности:**
-- Пользователь может просмотреть только свой профиль
-- Администратор может просмотреть любой профиль
-- Требуется валидный JWT токен в заголовке `Authorization: Bearer <token>`
-
----
-
-#### IsAdmin
-
-Проверка прав администратора у пользователя.
-
-**Request:**
-```protobuf
-message IsAdminRequest {
-  int64 user_id = 1;      // ID пользователя для проверки
-}
-```
-
-**Response:**
-```protobuf
-message IsAdminResponse {
-  bool is_admin = 1;      // Статус администратора
-}
-```
-
-**Ошибки:**
-- `Unauthenticated` - отсутствует или невалидный JWT токен
-- `PermissionDenied` - обычный пользователь пытается проверить другого пользователя
-- `NotFound` - пользователь не найден
-
-**Особенности:**
-- Пользователь может проверить только свои права
-- Администратор может проверить права любого пользователя
-- Требуется валидный JWT токен
-
----
-
-#### UpdatePassword
-
-Обновление пароля пользователя.
-
-**Request:**
-```protobuf
-message UpdatePasswordRequest {
-  int64 user_id = 1;           // ID пользователя
-  string new_password = 2;     // Новый пароль
-}
-```
-
-**Response:**
-```protobuf
-message UpdatePasswordResponse {
-  string message = 1;          // Сообщение об успехе
-}
-```
-
-**Ошибки:**
-- `Unauthenticated` - отсутствует или невалидный JWT токен
-- `PermissionDenied` - обычный пользователь пытается изменить чужой пароль
-- `NotFound` - пользователь не найден
-- `Internal` - ошибка при обновлении пароля
-
-**Особенности:**
-- Пользователь может изменить только свой пароль
-- Администратор может изменить пароль любого пользователя
-- Новый пароль автоматически хешируется
-- После обновления старый пароль становится недействительным
-
----
-
-#### RemoveUser
-
-Удаление пользователя из системы.
-
-**Request:**
-```protobuf
-message RemoveUserRequest {
-  int64 user_id = 1;           // ID пользователя для удаления
-}
-```
-
-**Response:**
-```protobuf
-message RemoveUserResponse {
-  string message = 1;          // Сообщение об успехе
-}
-```
-
-**Ошибки:**
-- `Unauthenticated` - отсутствует или невалидный JWT токен
-- `PermissionDenied` - обычный пользователь пытается удалить другого пользователя
-- `NotFound` - пользователь не найден (может быть успешно, если пользователь уже удален)
-
-**Особенности:**
-- Пользователь может удалить только свой аккаунт
-- Администратор может удалить любого пользователя
-- После удаления пользователь не сможет войти в систему
-- Удаление выполняется "мягко" (без удаления из БД, с пометкой удаленным)
-
----
-
-#### UpdateToken
-
-Обновление JWT токена без повторной аутентификации.
-
-**Request:**
-```protobuf
-Empty
-```
-
-**Response:**
-```protobuf
-message UpdateTokenResponse {
-  string token = 1;            // Новый JWT токен
-}
-```
-
-**Ошибки:**
-- `Unauthenticated` - отсутствует или невалидный JWT токен
-- `InvalidArgument` - токен не требует обновления или отсутствует
-- `Internal` - ошибка при создании нового токена
-
-**Особенности:**
-- Для SSO токенов (app_id=0) - создает новый SSO токен
-- Для токенов приложений - обновляет токен приложения
-- Новый токен имеет тот же срок жизни, что указан в конфигурации
-- Старый токен остается валидным до истечения срока действия
-
----
-
-#### UsersInfo
-
-Получение списка всех пользователей (только для администраторов).
-
-**Request:**
-```protobuf
-Empty
-```
-
-**Response:**
-```protobuf
-message Users {
-  repeated User users = 1;     // Список всех пользователей
-}
-```
-
-**Ошибки:**
-- `Unauthenticated` - отсутствует или невалидный JWT токен
-- `PermissionDenied` - запрашивающий пользователь не является администратором
-
-**Особенности:**
-- Доступно только администраторам
-- Возвращает полный список пользователей системы
-- Включает информацию о статусе администратора для каждого пользователя
-
----
-
-### Авторизация
-
-Большинство endpoints требуют JWT токен в заголовке запроса:
+## 📦 Структура проекта
 
 ```
-Authorization: Bearer <jwt_token>
+.
+├── cmd/sso/            # Точка входа (main.go)
+├── internal/
+│   ├── app/            # Приложение (gRPC сервер)
+│   ├── config/         # Конфигурация
+│   ├── domain/         # Бизнес-логика и модели
+│   ├── grpc/           # Реализация gRPC хендлеров
+│   ├── services/       # Сервисный слой (Auth, JWT)
+│   └── storage/        # Работа с БД (PostgreSQL)
+├── migrations/         # SQL миграции
+└── tests/              # E2E и интеграционные тесты
 ```
-
-Токен должен быть валидным и не истекшим. Для SSO токенов используется секрет из `JWT_SECRET`, для токенов приложений - секрет конкретного приложения.
-
-## Особенности
-
-### 1. Мультиприложенность
-
-SSO поддерживает работу с несколькими приложениями одновременно:
-
-- **SSO (app_id = 0)**: Специальное приложение для управления пользователями. Токены подписываются `JWT_SECRET`.
-- **Другие приложения (app_id > 0)**: Каждое приложение имеет свой секрет для подписи токенов. Информация хранится в таблице `apps`.
-
-**Пример:**
-```go
-// Логин для SSO
-loginResp, _ := client.Login(ctx, &ssov1.LoginRequest{
-    AppId: 0,  // SSO
-    Login: "user",
-    Password: "pass",
-})
-
-// Логин для приложения с ID=1
-appLoginResp, _ := client.Login(ctx, &ssov1.LoginRequest{
-    AppId: 1,  // Другое приложение
-    Login: "user",
-    Password: "pass",
-})
-```
-
-### 2. Система прав доступа
-
-**Обычный пользователь:**
-- Может просматривать только свой профиль
-- Может изменять только свой пароль
-- Может удалить только свой аккаунт
-- Может проверить только свои права администратора
-
-**Администратор:**
-- Может просматривать профиль любого пользователя
-- Может изменять пароль любого пользователя
-- Может удалить любого пользователя
-- Может проверять права любого пользователя
-- Может получить список всех пользователей
-
-**Проверка прав:**
-```go
-isAdminResp, _ := client.IsAdmin(ctx, &ssov1.IsAdminRequest{
-    UserId: userID,
-})
-if isAdminResp.IsAdmin {
-    // Пользователь является администратором
-}
-```
-
-### 3. Безопасность паролей
-
-- Все пароли хешируются с помощью **bcrypt** перед сохранением в базу данных
-- Пароли никогда не передаются в открытом виде после сохранения
-- При обновлении пароля автоматически создается новый хеш
-
-### 4. JWT Токены
-
-**Структура SSO токена (app_id=0):**
-```json
-{
-  "uid": "123",
-  "exp": 1234567890
-}
-```
-
-**Структура токена приложения (app_id>0):**
-```json
-{
-  "uid": "123",
-  "login": "user",
-  "email": "user@example.com",
-  "app_id": 1,
-  "exp": 1234567890
-}
-```
-
-**Особенности:**
-- Токены имеют ограниченный срок жизни (настраивается через `JWT_TOKEN_TTL`)
-- Токены подписываются секретом приложения (HMAC-SHA256)
-- Истекшие токены отклоняются с ошибкой `Unauthenticated`
-
-### 5. Конфигурация через переменные окружения
-
-Система поддерживает приоритет конфигурации:
-1. **Переменные окружения** (высший приоритет)
-2. **Файл .env** (низкий приоритет)
-
-Это позволяет легко переопределять настройки для разных окружений.
-
-### 6. Автоматические миграции
-
-При запуске через Docker Compose миграции выполняются автоматически:
-1. PostgreSQL запускается и проходит health check
-2. Выполняется сервис миграций
-3. После успешных миграций запускается SSO приложение
-
-### 7. Логирование
-
-Система использует структурированное логирование (slog) с поддержкой разных уровней:
-- **local/dev**: Debug уровень
-- **prod**: Info уровень
-
-Логи включают контекстные поля (операция, пользователь, время и т.д.)
-
-### 8. Health Checks
-
-PostgreSQL имеет встроенный health check, который проверяет готовность базы данных перед запуском зависимых сервисов.
-
-## Конфигурация
-
-### Переменные окружения
-
-| Переменная | Описание | Значение по умолчанию | Обязательная |
-|------------|----------|----------------------|--------------|
-| `ENV` | Окружение (local/dev/prod) | `local` | Нет |
-| `GRPC_PORT` | Порт gRPC сервера | `8080` | Нет |
-| `GRPC_TIMEOUT` | Таймаут gRPC запросов | `10s` | Нет |
-| `POSTGRES_HOST` | Хост PostgreSQL | `localhost` | Да |
-| `POSTGRES_PORT` | Внутренний порт PostgreSQL | `5432` | Да |
-| `POSTGRES_EXTERNAL_PORT` | Внешний порт PostgreSQL | `5432` | Да |
-| `POSTGRES_DB` | Имя базы данных | - | Да |
-| `POSTGRES_USER` | Пользователь БД | - | Да |
-| `POSTGRES_PASSWORD` | Пароль БД | - | Да |
-| `JWT_SECRET` | Секрет для подписи SSO токенов | - | Да |
-| `JWT_TOKEN_TTL` | Время жизни токена | `12h` | Нет |
-
-### Формат .env файла
-
-```env
-# Application
-ENV=local
-
-# GRPC
-GRPC_PORT=8080
-GRPC_TIMEOUT=10s
-
-# Database
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-POSTGRES_EXTERNAL_PORT=5436
-POSTGRES_DB=myapp_db
-POSTGRES_USER=dbuser
-POSTGRES_PASSWORD=dbpass123
-
-# JWT
-JWT_SECRET=my-secret
-JWT_TOKEN_TTL=12h
-```
-
-## Тестирование
-
-Проект содержит комплексный набор тестов, покрывающий все основные функции.
-
-### Запуск тестов
-
-```bash
-# Все тесты
-go test ./tests/...
-
-# Конкретный тест
-go test ./tests/... -run TestRegisterLogin_Login_HappyPath
-
-# С verbose выводом
-go test ./tests/... -v
-```
-
-### Покрытие тестами
-
-Тесты покрывают следующие сценарии:
-
-#### Регистрация и вход
-- ✅ Успешная регистрация пользователя
-- ✅ Успешный вход с получением JWT токена
-- ✅ Проверка корректности данных в токене
-
-#### Информация о пользователе
-- ✅ Пользователь получает свою информацию
-- ✅ Администратор получает свою информацию
-- ✅ Администратор получает информацию другого пользователя
-- ✅ Проверка прав доступа
-
-#### Управление паролем
-- ✅ Пользователь обновляет свой пароль
-- ✅ Администратор обновляет пароль пользователя
-- ✅ Проверка работы нового пароля
-
-#### Удаление пользователей
-- ✅ Администратор удаляет пользователя
-- ✅ Пользователь удаляет свой аккаунт
-- ✅ Администратор удаляет несуществующего пользователя
-
-#### Проверка прав администратора
-- ✅ Проверка обычного пользователя (не админ)
-- ✅ Проверка администратора
-
-#### Обновление токена
-- ✅ Обновление токена пользователя
-
-#### Список пользователей
-- ✅ Обычный пользователь не может получить список
-- ✅ Администратор получает список всех пользователей
-
-### Тестовые данные
-
-По умолчанию в тестах используется:
-- **SSO App ID**: 0
-- **Test App ID**: 1
-- **Test App Secret**: "test-secret"
-- **Admin Login**: "admin"
-- **Admin Password**: "admin_pass"
-- **SSO Secret**: "my-secret"
-
-## Разработка
-
-### Структура кода
-
-Проект следует принципам Clean Architecture:
-
-- **cmd/** - точки входа приложения
-- **internal/app/** - инициализация и сборка приложения
-- **internal/config/** - конфигурация
-- **internal/domain/** - доменные модели
-- **internal/grpc/** - gRPC handlers и валидация
-- **internal/lib/** - утилиты (JWT, генерация)
-- **internal/repository/** - слой работы с данными
-- **internal/services/** - бизнес-логика
-- **migrations/** - SQL миграции
-- **tests/** - интеграционные тесты
-
-### Добавление новой миграции
-
-```bash
-# Создание новой миграции
-migrate create -ext sql -dir ./migrations -seq add_new_table
-
-# Применить миграции
-migrate -path ./migrations \
-  -database 'postgres://user:pass@localhost:5432/db?sslmode=disable' \
-  up
-
-# Откатить последнюю миграцию
-migrate -path ./migrations \
-  -database 'postgres://user:pass@localhost:5432/db?sslmode=disable' \
-  down
-```
-
-### Локальная разработка
-
-1. Запустите PostgreSQL через Docker Compose:
-```bash
-docker-compose up -d postgres
-```
-
-2. Выполните миграции:
-```bash
-migrate -path ./migrations \
-  -database 'postgres://dbuser:dbpass123@localhost:5436/myapp_db?sslmode=disable' \
-  up
-```
-
-3. Настройте `.env` для локального запуска
-
-4. Запустите приложение:
-```bash
-go run cmd/sso/main.go
-```
-
-## Troubleshooting
-
-### Проблема: Не удается подключиться к базе данных
-
-**Решение:**
-- Проверьте, что PostgreSQL запущен: `docker-compose ps`
-- Проверьте логи: `docker-compose logs postgres`
-- Убедитесь, что переменные окружения настроены правильно
-- В Docker используйте имя сервиса `postgres` вместо `localhost`
-
-### Проблема: Миграции не применяются
-
-**Решение:**
-- Проверьте подключение к БД
-- Убедитесь, что миграции выполняются до запуска приложения
-- Проверьте логи миграций: `docker-compose logs migrate`
-
-### Проблема: JWT токен не валиден
-
-**Решение:**
-- Убедитесь, что используется правильный секрет для приложения
-- Проверьте срок действия токена
-- Убедитесь, что токен правильно передается в заголовке `Authorization: Bearer <token>`
-
-### Проблема: Permission Denied
-
-**Решение:**
-- Проверьте, что пользователь имеет необходимые права (администратор)
-- Убедитесь, что пользователь пытается получить доступ только к своим данным
-- Проверьте, что JWT токен валиден и принадлежит правильному пользователю
-
-## Лицензия
-
-Внутренний проект ITS TECH
-
-## Контакты
-
-Для вопросов и предложений обращайтесь к команде разработки ITS TECH.

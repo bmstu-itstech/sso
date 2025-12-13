@@ -52,7 +52,7 @@ func TestUpdateToken_User(t *testing.T) {
 	require.True(t, ok)
 
 	// Создаем контекст с токеном для авторизованного запроса
-	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", "Bearer "+oldToken))
+	ctxWithToken := metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", strconv.FormatInt(respRegister.GetUserId(), 10)))
 
 	// Обновляем токен
 	respUpdateToken, err := st.AuthClient.UpdateToken(ctxWithToken, &ssov1.UpdateTokenRequest{AppId: appId})
