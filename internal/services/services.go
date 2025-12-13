@@ -159,10 +159,9 @@ func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, 
 	log.Info("checking user is admin")
 
 	isAdmin, err = s.userProvider.UserIsAdmin(ctx, userId)
-	// Поведение без ошибок
 	if err != nil {
 		log.Error("failed to check user is admin", err)
-		return false, nil
+		return false, err
 	}
 
 	return isAdmin, nil
@@ -311,7 +310,7 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, 
 func (s *ServiceUser) SignIn(ctx context.Context, appId int32) (int64, error) {
 	const op = "services.SignIn"
 
-	log := s.log.With(slog.String("op", op))
+	log := s.log.With(slog.String("op", op), slog.Int64("app_id", int64(appId)))
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {

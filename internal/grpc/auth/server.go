@@ -94,7 +94,7 @@ func (s *serverApi) IsAdmin(ctx context.Context, req *ssov1.IsAdminRequest) (*ss
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, "uid", userId)
+	ctx = context.WithValue(ctx, "x-user-id", userId)
 
 	isAdmin, err := s.auth.IsAdmin(ctx, userId)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s *serverApi) UserInfo(ctx context.Context, req *ssov1.UserInfoRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, "uid", userId)
+	ctx = context.WithValue(ctx, "x-user-id", userId)
 
 	isAdmin, err := s.auth.IsAdmin(ctx, userId)
 	if err != nil {
@@ -151,7 +151,7 @@ func (s *serverApi) UpdateToken(ctx context.Context, req *ssov1.UpdateTokenReque
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, "uid", userId)
+	ctx = context.WithValue(ctx, "x-user-id", userId)
 	token, err := s.auth.UpdateTokenApp(ctx, req.GetAppId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "update token failed")
@@ -166,7 +166,7 @@ func (s *serverApi) UsersInfo(ctx context.Context, _ *emptypb.Empty) (*ssov1.Use
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, "uid", userId)
+	ctx = context.WithValue(ctx, "x-user-id", userId)
 
 	isAdmin, err := s.auth.IsAdmin(ctx, userId)
 	if err != nil {
@@ -205,7 +205,7 @@ func (s *serverApi) UpdatePassword(ctx context.Context, req *ssov1.UpdatePasswor
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, "uid", userId)
+	ctx = context.WithValue(ctx, "x-user-id", userId)
 
 	isAdmin, err := s.auth.IsAdmin(ctx, userId)
 	if err != nil {
@@ -232,7 +232,7 @@ func (s *serverApi) RemoveUser(ctx context.Context, req *ssov1.RemoveUserRequest
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, "uid", userId)
+	ctx = context.WithValue(ctx, "x-user-id", userId)
 
 	isAdmin, err := s.auth.IsAdmin(ctx, userId)
 	if err != nil {
