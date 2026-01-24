@@ -26,7 +26,7 @@ func (s *ServiceJwt) NewToken(ctx context.Context, jwtModel models.TokenModel) (
 	if jwtModel.Uid == 0 {
 		return "", errors.New("user id is empty")
 	}
-
+	_ = 0
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	claims := token.Claims.(jwt.MapClaims)
