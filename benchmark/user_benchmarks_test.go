@@ -3,6 +3,7 @@ package benchmark
 import (
 	"context"
 	"strconv"
+	"sync"
 	"testing"
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
@@ -63,23 +64,26 @@ func prepareUser(ctxCtx context.Context, st *suite.Suite) (UserBenchmarks, error
 func BenchmarkRegister(b *testing.B) {
 	ctx, st := suite.New(b)
 	b.ReportAllocs()
-
+	wg := &sync.WaitGroup{}
 	for i := 0; i < b.N; i++ {
-		email := gofakeit.Email()
-		login := gofakeit.Username() + strconv.Itoa(i)
-		fullName := gofakeit.Name()
-		password := gofakeit.Password(true, true, true, true, false, passDefaultLen)
+		wg.Go(func() {
+			email := gofakeit.Email()
+			login := gofakeit.Username() + strconv.Itoa(i)
+			fullName := gofakeit.Name()
+			password := gofakeit.Password(true, true, true, true, false, passDefaultLen)
 
-		_, err := st.AuthClient.Register(ctx, &ssov1.RegisterRequest{
-			Login:    login,
-			Password: password,
-			Email:    email,
-			FullName: fullName,
+			_, err := st.AuthClient.Register(ctx, &ssov1.RegisterRequest{
+				Login:    login,
+				Password: password,
+				Email:    email,
+				FullName: fullName,
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
 		})
-		if err != nil {
-			b.Fatal(err)
-		}
 	}
+	wg.Wait()
 }
 
 // Бенчмарк: регистрация + логин
@@ -134,18 +138,21 @@ func BenchmarkLogin(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-
+	wg := &sync.WaitGroup{}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := st.AuthClient.Login(ctx, &ssov1.LoginRequest{
-			AppId:    int32(appId),
-			Login:    login,
-			Password: password,
+		wg.Go(func() {
+			_, err := st.AuthClient.Login(ctx, &ssov1.LoginRequest{
+				AppId:    int32(appId),
+				Login:    login,
+				Password: password,
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
 		})
-		if err != nil {
-			b.Fatal(err)
-		}
 	}
+	wg.Wait()
 }
 
 // Бенчмарк обновления JWT токена пользователем

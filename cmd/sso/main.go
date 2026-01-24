@@ -25,6 +25,7 @@ func main() {
 	application := app.New(logger, *cfg)
 
 	go application.GRPCSrv.MustRun()
+	go application.HTTPrv.MustRun()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -35,5 +36,9 @@ func main() {
 
 	application.GRPCSrv.Stop()
 
-	logger.Info("Server stopped")
+	logger.Info("GRPC Server stopped")
+
+	application.HTTPrv.Stop()
+
+	logger.Info("HTTP Server stopped")
 }

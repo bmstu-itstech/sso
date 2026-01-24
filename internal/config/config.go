@@ -8,11 +8,15 @@ import (
 	"github.com/spf13/viper"
 )
 
+type HttpConfig struct {
+	Port int
+}
 type Config struct {
 	ENV      string
 	GRPC     GRPCConfig
 	Postgres PostgresConfig
 	JWT      JWTConfig
+	HTTP     HttpConfig
 }
 
 type GRPCConfig struct {
@@ -56,7 +60,6 @@ func InitConfig() error {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			return nil
 		}
-
 		// Если файл есть, но он битый (синтаксис) — возвращаем ошибку
 		return err
 	}
@@ -70,6 +73,9 @@ func GetConfig() *Config {
 		GRPC: GRPCConfig{
 			Port:    viper.GetInt("GRPC_PORT"),
 			Timeout: viper.GetDuration("GRPC_TIMEOUT"),
+		},
+		HTTP: HttpConfig{
+			Port: viper.GetInt("HTTP_PORT"),
 		},
 		Postgres: PostgresConfig{
 			Host:     viper.GetString("POSTGRES_HOST"),

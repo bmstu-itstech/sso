@@ -167,4 +167,8 @@ func main() {
 │   └── storage/        # Работа с БД (PostgreSQL)
 ├── migrations/         # SQL миграции
 └── tests/              # E2E и интеграционные тесты
+
+## для запуска быстро
+docker run --name=sso-db -e POSTGRES_PASSWORD=qwerty -p 5436:5432 -d postgres
+migrate -path ./migrations -database 'postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable' up
 ```

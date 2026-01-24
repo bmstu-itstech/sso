@@ -19,7 +19,7 @@ type App struct {
 	cfg        *config.Config
 }
 
-func New(log *slog.Logger, authServer authgrpc.Auth, cfg config.Config) *App {
+func New(log *slog.Logger, authServer authgrpc.AuthGrpc, cfg config.Config) *App {
 	authInterceptor := middleware.LoggerInterceptor(log)
 	gRPCServer := grpc.NewServer(grpc.UnaryInterceptor(authInterceptor))
 

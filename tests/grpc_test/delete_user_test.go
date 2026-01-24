@@ -1,12 +1,12 @@
-package tests
+package grpc_test
 
 import (
+	"github.com/bmstu-itstech/sso/tests/grpc_test/suite"
 	"math/rand"
 	"strconv"
 	"testing"
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"github.com/bmstu-itstech/sso/tests/suite"
 	"github.com/brianvoe/gofakeit/v6"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"

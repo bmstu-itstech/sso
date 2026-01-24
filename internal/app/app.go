@@ -1,6 +1,7 @@
 package app
 
 import (
+	httpapp "github.com/bmstu-itstech/sso/internal/app/http"
 	"github.com/bmstu-itstech/sso/internal/services/jwt"
 	"log"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 type App struct {
 	GRPCSrv *grpcapp.App
 	cfg     *config.Config
+	HTTPrv  *httpapp.App
 }
 
 func New(logger *slog.Logger, cfg config.Config) *App {
@@ -24,8 +26,11 @@ func New(logger *slog.Logger, cfg config.Config) *App {
 	}
 	authService := services.New(logger, &repos, &repos, &repos, jwtService, &cfg)
 	grpcSrv := grpcapp.New(logger, authService, cfg)
+
+	httpSrv := httpapp.New(logger, authService, &cfg)
 	return &App{
 		GRPCSrv: grpcSrv,
+		HTTPrv:  httpSrv,
 		cfg:     &cfg,
 	}
 }

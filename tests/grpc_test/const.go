@@ -1,4 +1,4 @@
-package tests
+package grpc_test
 
 const (
 	ssoId          = 0
