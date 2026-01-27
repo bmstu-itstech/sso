@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -37,6 +38,9 @@ type PostgresConfig struct {
 type JWTConfig struct {
 	Secret   string        `env:"JWT_SECRET"`
 	TokenTTL time.Duration `env:"JWT_TOKEN_TTL"`
+}
+type PathDB struct {
+	path string
 }
 
 func InitConfig() error {
@@ -91,4 +95,16 @@ func GetConfig() *Config {
 			TokenTTL: viper.GetDuration("JWT_TOKEN_TTL"),
 		},
 	}
+}
+
+func (c *Config) GetPostgresUrl() (connectionString string) {
+	cfg := c.Postgres
+	if cfg.Url != "" {
+		connectionString = cfg.Url
+	} else {
+		connectionString = fmt.Sprintf(
+			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.UserName, cfg.Password, cfg.DB, cfg.SSLMode)
+	}
+	return
 }

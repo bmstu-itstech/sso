@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/bmstu-itstech/sso/internal/app"
@@ -27,6 +29,8 @@ func main() {
 	go application.GRPCSrv.MustRun()
 	go application.HTTPrv.MustRun()
 
+	logger.Info(fmt.Sprintf("docx to: http://localhost:%s/swagger/index.html", strconv.Itoa(cfg.HTTP.Port)))
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
@@ -35,10 +39,9 @@ func main() {
 	logger.Info("Server stopped by signal", slog.String("signal", sign.String()))
 
 	application.GRPCSrv.Stop()
-
-	logger.Info("GRPC Server stopped")
-
 	application.HTTPrv.Stop()
 
+	logger.Info("GRPC Server stopped")
 	logger.Info("HTTP Server stopped")
+
 }

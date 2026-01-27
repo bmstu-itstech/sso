@@ -1,174 +1,230 @@
-# SSO Service
+# SSO — Single Sign-On сервис (AuthN/AuthZ)
 
-Микросервис централизованной аутентификации и авторизации, реализующий протокол SSO (Single Sign-On). Сервис предоставляет gRPC API для регистрации, входа пользователей, управления правами доступа и валидации JWT-токенов. Написан на Go, использует PostgreSQL в качестве хранилища данных.
+SSO — микросервис централизованной **аутентификации** и **авторизации** для ваших приложений. Он выдаёт и валидирует **JWT**, хранит пользователей в **PostgreSQL**, ускоряет горячие операции через **in-memory cache**, и предоставляет **два транспорта** для интеграции:
 
-## 🚀 Ключевые особенности
+- **HTTP API (Gin)** — удобно для фронтенда и быстрых интеграций.
+- **gRPC API** — удобно для межсервисного взаимодействия и высокой производительности.
 
-- **gRPC API**: Высокопроизводительный интерфейс на базе Protocol Buffers для взаимодействия между сервисами.
-- **JWT Authentication**: Выпуск и валидация Access-токенов (HMAC SHA256).
-- **Secure Storage**: Безопасное хранение паролей с использованием bcrypt.
-- **Role-Based Access Control (RBAC)**: Поддержка ролей (Admin/User) для разграничения доступа.
-- **PostgreSQL**: Надежное хранение данных пользователей и приложений.
-- **Interceptors**: Встроенные механизмы логирования и восстановления после паники.
-- **Configurable**: Гибкая настройка через YAML-конфиг и переменные окружения.
+> Философия проекта: один источник правды по пользователям/ролям + быстрые проверки токена/ролей в рантайме.
 
-## 🛠 Предварительные требования
+---
 
-Для запуска и разработки вам понадобятся:
+## Что в этом продукте «уникального»
 
-- **Go** (версия 1.25+)
-- **Docker** и **Docker Compose**
-- **Make** (опционально, для удобства запуска команд)
-- **gRPC Client** (например, [BloomRPC](https://github.com/bloomrpc/bloomrpc) или [grpcurl](https://github.com/fullstorydev/grpcurl)) для тестирования.
+- **Два интерфейса из одного ядра**: бизнес-логика в сервисном слое переиспользуется для HTTP и gRPC.
+- **JWT-first**: выдача токена на логине, проверка токена в middleware, извлечение `uid`/`isAdmin`.
+- **RBAC на минималках**: роль `isAdmin` как базовый уровень разграничения прав.
+- **Кэш поверх Postgres**: снижает нагрузку на БД на частых запросах (например, проверка прав/получение пользователя).
 
-## ⚡ Быстрый старт
+---
 
-### 1. Клонирование и настройка
+## Технологический стек
 
-```bash
-git clone https://github.com/bmstu-itstech/sso.git
-cd sso
-# Создайте файл конфигурации (если используется локальный запуск без Docker)
-# cp config/local.yaml config/config.yaml
+**Язык/платформа**
+- Go (см. `go.mod`)
+
+**Транспорт**
+- HTTP: `gin-gonic/gin`
+- gRPC: `google.golang.org/grpc`
+
+**Auth/Security**
+- JWT: `golang-jwt/jwt/v5`
+- Хэш паролей: `bcrypt` (`golang.org/x/crypto`)
+
+**Хранилище**
+- PostgreSQL (`lib/pq`, `sqlx`)
+
+**Кэш**
+- In-memory cache (реализация в `internal/repository/cache/in_memory_cash.go`)
+
+**Документация API**
+- Swagger (swaggo): генерируется в `docs/`, UI отдаётся сервером
+
+---
+
+## Архитектура (коротко)
+
+- `internal/services` — бизнес-логика (регистрация, логин, валидация токена, права, операции с пользователями)
+- `internal/repository/postgres` — работа с Postgres (источник правды)
+- `internal/repository/cache` — быстрый кэш для горячих данных
+- `internal/http` — HTTP сервер на Gin (роуты + middleware)
+- `internal/grpc` — gRPC сервер (handlers + interceptor)
+- `internal/app` — сборка приложения (wire зависимостей)
+
+---
+
+## Структура проекта
+
+```text
+.
+├── cmd/
+│   ├── sso/                 # entrypoint приложения (поднимает gRPC + HTTP)
+│   └── client/              # пример клиента (может быть неактуален/в разработке)
+├── internal/
+│   ├── app/                 # сборка приложения (grpc/http)
+│   ├── config/              # конфиг (viper)
+│   ├── domain/models/       # модели домена и HTTP DTO
+│   ├── grpc/                # gRPC handlers + middleware
+│   ├── http/                # Gin сервер: роуты + middleware
+│   ├── repository/
+│   │   ├── postgres/        # репозиторий Postgres
+│   │   └── cache/           # in-memory cache
+│   └── services/            # сервисный слой + JWT сервис
+├── migrations/              # SQL миграции
+├── docs/                    # swagger.json/yaml (генерируется swag)
+└── tests/                   # тесты (grpc/http)
 ```
 
-### 2. Запуск через Docker Compose
+---
 
-Это рекомендуемый способ для развертывания локального окружения вместе с базой данных.
+## Документация API (Swagger)
+
+Swagger генерируется через swaggo и отдаётся самим HTTP сервером.
+
+- UI: `http://{host}:{port}/swagger/index.html`
+- JSON: `http://{host}:{port}/swagger/doc.json`
+
+### Обновить Swagger
+
+```bash
+swag init -g internal/http/docs.go -o ./docs
+```
+
+> Если вы хотите, чтобы документация открывалась по `/docx` (а не `/swagger/index.html`) — добавьте редирект `/docx -> /docx/index.html` и смонтируйте swagger UI на `/docx/*any`.
+
+---
+
+## Как устроены Postgres и cache (и зачем оба)
+
+### Postgres — источник правды
+PostgreSQL хранит пользователей/учётные данные/роль. Любые изменения состояния (регистрация, смена пароля, удаление пользователя) фиксируются в БД.
+
+### In-memory cache — ускоритель
+Кэш (в `internal/repository/cache/in_memory_cash.go`) — это быстрый слой в памяти процесса. Он нужен, чтобы:
+
+- снижать количество запросов в Postgres на **частых чтениях**;
+- ускорять **проверки** (например, роль/пользователь);
+- сгладить пики нагрузки (когда много запросов на одни и те же данные).
+
+Важно понимать: in-memory cache **не является распределённым**. Это значит:
+- кэш живёт в рамках одного инстанса сервиса;
+- при рестарте сервиса кэш очищается;
+- при горизонтальном масштабировании кэш будет «разным» у разных реплик.
+
+В этой архитектуре это нормальный компромисс: Postgres остаётся системой истины, а кэш — оптимизация для скорости.
+
+---
+
+## Быстрый старт (максимально быстро)
+
+Ниже — два рабочих сценария: через Docker Compose (рекомендуется) и вручную.
+
+### Вариант A. Docker Compose (recommended)
+
+1) Поднять инфраструктуру:
 
 ```bash
 docker-compose up -d
 ```
 
-Сервис будет доступен на порту, указанном в конфигурации (по умолчанию `44044`).
-
-### 3. Проверка работы
+2) Накатить миграции (если compose их не накатывает автоматически):
 
 ```bash
-# Пример проверки порта (если установлен netcat)
-nc -zv localhost 44044
+migrate -path ./migrations -database "postgres://postgres:{PASSWORD}@localhost:{PORT}/{DB}?sslmode=disable" up
 ```
 
-## 🔌 Интеграция с вашим микросервисом
+3) Запустить сервис:
 
-Ниже приведен пример того, как другой Go-сервис может использовать клиент gRPC для взаимодействия с SSO. В данном примере мы проверяем права администратора для пользователя.
-
-> **Важно:** Для полноценной валидации токена рекомендуется либо использовать общий секретный ключ (для локальной проверки подписи JWT), либо реализовать метод `ValidateToken` в SSO. В примере ниже показан вызов метода `IsAdmin`, который требует валидного токена.
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
-
-	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-)
-
-type SSOClient struct {
-	api ssov1.AuthClient
-}
-
-func NewSSOClient(addr string) (*SSOClient, error) {
-	const op = "grpc.NewSSOClient"
-
-	// Используем insecure credentials только для тестов/локальной разработки
-	cc, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	return &SSOClient{
-		api: ssov1.NewAuthClient(cc),
-	}, nil
-}
-
-func (c *SSOClient) IsAdmin(ctx context.Context, userID int64) (bool, error) {
-	resp, err := c.api.IsAdmin(ctx, &ssov1.IsAdminRequest{
-		UserId: userID,
-	})
-	if err != nil {
-		return false, err
-	}
-	return resp.IsAdmin, nil
-}
-
-// AuthMiddleware пример middleware, который извлекает токен и делает запрос к SSO
-// Примечание: В реальном сценарии лучше валидировать JWT локально публичным ключом для производительности.
-func (c *SSOClient) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-
-		// Добавляем токен в метаданные для gRPC запроса
-		md := metadata.New(map[string]string{
-			"authorization": "Bearer " + token,
-		})
-		ctx := metadata.NewOutgoingContext(r.Context(), md)
-
-		// Пример: проверяем, является ли пользователь админом.
-		// Внимание: для этого нужно знать UserID. Обычно он извлекается из claims токена.
-		// Здесь для примера мы используем хардкод или извлекаем из заголовка (небезопасно без проверки подписи).
-		// userID := extractUserIdFromToken(token)
-		var userID int64 = 1 // Заглушка
-
-		isAdmin, err := c.IsAdmin(ctx, userID)
-		if err != nil {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-
-		if !isAdmin {
-			http.Error(w, "Admin access required", http.StatusForbidden)
-			return
-		}
-
-		next(w, r)
-	}
-}
-
-func main() {
-	sso, err := NewSSOClient("localhost:44044")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	http.HandleFunc("/admin", sso.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Welcome, Admin!"))
-	}))
-
-	log.Println("Service started on :8080")
-	http.ListenAndServe(":8080", nil)
-}
+```bash
+go run ./cmd/sso
 ```
 
-## 📦 Структура проекта
+4) Проверка:
 
-```
-.
-├── cmd/sso/            # Точка входа (main.go)
-├── internal/
-│   ├── app/            # Приложение (gRPC сервер)
-│   ├── config/         # Конфигурация
-│   ├── domain/         # Бизнес-логика и модели
-│   ├── grpc/           # Реализация gRPC хендлеров
-│   ├── services/       # Сервисный слой (Auth, JWT)
-│   └── storage/        # Работа с БД (PostgreSQL)
-├── migrations/         # SQL миграции
-└── tests/              # E2E и интеграционные тесты
+- `GET http://localhost:{HTTP_PORT}/api/v1/ping`
+- Swagger: `http://localhost:{HTTP_PORT}/swagger/index.html`
 
-## для запуска быстро
-docker run --name=sso-db -e POSTGRES_PASSWORD=qwerty -p 5436:5432 -d postgres
-migrate -path ./migrations -database 'postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable' up
+### Вариант B. Поднять Postgres вручную + миграции + запуск
+
+> Ваш предыдущий баг `failed to open database: EOF` почти всегда из-за того, что порт/контейнер не готовы или проброшен неверный порт. Важно пробрасывать **5432 внутри контейнера**.
+
+1) Запустить Postgres:
+
+```bash
+docker run --name sso-db -e POSTGRES_PASSWORD=qwerty -p 5436:5432 -d postgres
 ```
+
+2) Подождать, пока БД поднимется (пара секунд) и накатить миграции:
+
+```bash
+migrate -path ./migrations -database "postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable" up
+```
+
+3) Запустить сервис:
+
+```bash
+go run ./cmd/sso
+```
+
+---
+
+## Переменные окружения и конфигурация
+
+Конфиг собирается через `viper`. Ключевые параметры смотрите в `internal/config/config.go`.
+
+На практике вам понадобятся:
+- `POSTGRES_HOST`
+- `POSTGRES_EXTERNAL_PORT`
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET`
+- `GRPC_PORT`
+- `HTTP_PORT`
+
+---
+
+## Полезные эндпоинты (HTTP)
+
+Публичные:
+- `GET  /api/v1/ping`
+- `POST /api/v1/login`
+- `POST /api/v1/register`
+
+Приватные (нужен `Authorization: Bearer {JWT}`):
+- `GET    /api/v1/user/is_admin/:id`
+- `GET    /api/v1/user/info/:id`
+- `GET    /api/v1/user/info` (обычно только для admin)
+- `POST   /api/v1/user/update_token`
+- `PUT    /api/v1/user/`
+- `DELETE /api/v1/user/`
+
+Детальный контракт и примеры — в Swagger UI.
+
+---
+
+## Тесты
+
+- HTTP unit-тесты: `tests/http_test`
+- HTTP интеграционные: `tests/http_integration_test` (ожидают поднятый сервис)
+- gRPC тесты: `tests/grpc_test` (в репозитории могут быть в процессе синхронизации с proto)
+
+Запуск выборочно:
+
+```bash
+go test ./tests/http_test
+```
+
+---
+
+## Development заметки
+
+- Swagger обновляется командой: `swag init -g internal/http/docs.go -o ./docs`
+- HTTP сервер отдаёт Swagger UI по `/swagger/*any`.
+
+---
+
+## Лицензия
+
+См. репозиторий проекта.
+

@@ -5,10 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
+	_ "github.com/bmstu-itstech/sso/docs"
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 type Auth interface {
@@ -46,6 +49,10 @@ func New(auth Auth, cfg *config.Config) *ServerGin {
 func (s *ServerGin) InitRouter() *gin.Engine {
 
 	router := gin.Default()
+
+	// Swagger UI
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	api := router.Group("/api")
 	v1 := api.Group("/v1")
 	{
@@ -53,7 +60,8 @@ func (s *ServerGin) InitRouter() *gin.Engine {
 		v1.POST("/login", s.login)
 		v1.POST("/register", s.register)
 
-		userGroup := v1.Group("/user", s.authMiddleware())
+		userGroup := v1.Group("/user")
+		userGroup.Use(s.authMiddleware())
 		{
 			userGroup.GET("/is_admin/:id", s.isAdmin)
 			userGroup.GET("/info/:id", s.userInfo)
@@ -76,10 +84,29 @@ func (s *ServerGin) decodeAndValidate(c *gin.Context, v interface{}) error {
 }
 
 // Обработчики маршрутов
+
+// ping godoc
+// @Summary     Health check
+// @Description Проверка доступности сервиса.
+// @Tags        Health
+// @Produce     json
+// @Success     200 {object} map[string]string
+// @Router      /ping [get]
 func (s *ServerGin) ping(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "pong"})
 }
 
+// login godoc
+// @Summary     Login
+// @Description Логин пользователя. Возвращает JWT.
+// @Tags        Auth
+// @Accept      json
+// @Produce     json
+// @Param       body body models.LoginRequest true "Данные входа"
+// @Success     200 {object} models.LoginResponse
+// @Failure     400 {object} ErrorResponse "Некорректный JSON или не пройдена валидация"
+// @Failure     401 {object} ErrorResponse "Неверные учётные данные"
+// @Router      /login [post]
 func (s *ServerGin) login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := s.decodeAndValidate(c, &req); err != nil {
@@ -96,6 +123,17 @@ func (s *ServerGin) login(c *gin.Context) {
 	c.JSON(http.StatusOK, models.LoginResponse{Token: token})
 }
 
+// register godoc
+// @Summary     Register
+// @Description Регистрация нового пользователя.
+// @Tags        Auth
+// @Accept      json
+// @Produce     json
+// @Param       body body models.RegisterRequest true "Данные регистрации"
+// @Success     200 {object} models.RegisterResponse
+// @Failure     400 {object} ErrorResponse "Некорректный JSON или не пройдена валидация"
+// @Failure     409 {object} ErrorResponse "Пользователь уже существует"
+// @Router      /register [post]
 func (s *ServerGin) register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := s.decodeAndValidate(c, &req); err != nil {
@@ -112,6 +150,19 @@ func (s *ServerGin) register(c *gin.Context) {
 	c.JSON(http.StatusOK, models.RegisterResponse{UserId: userId})
 }
 
+// isAdmin godoc
+// @Summary     Check admin
+// @Description Проверка, является ли пользователь админом.
+// @Tags        User
+// @Security    BearerAuth
+// @Produce     json
+// @Param       id path int true "User ID"
+// @Success     200 {object} models.IsAdminResponse
+// @Failure     400 {object} ErrorResponse "Неверный формат id"
+// @Failure     401 {object} ErrorResponse "Нет/невалидный Bearer token"
+// @Failure     403 {object} ErrorResponse "Недостаточно прав"
+// @Failure     404 {object} ErrorResponse "Пользователь не найден"
+// @Router      /user/is_admin/{id} [get]
 func (s *ServerGin) isAdmin(c *gin.Context) {
 	var req models.IsAdminRequest
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -136,6 +187,19 @@ func (s *ServerGin) isAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, models.IsAdminResponse{IsAdmin: isAdmin})
 }
 
+// userInfo godoc
+// @Summary     User info
+// @Description Получение информации о пользователе по ID.
+// @Tags        User
+// @Security    BearerAuth
+// @Produce     json
+// @Param       id path int true "User ID"
+// @Success     200 {object} models.User
+// @Failure     400 {object} ErrorResponse "Неверный формат id"
+// @Failure     401 {object} ErrorResponse "Нет/невалидный Bearer token"
+// @Failure     403 {object} ErrorResponse "Недостаточно прав"
+// @Failure     404 {object} ErrorResponse "Пользователь не найден"
+// @Router      /user/info/{id} [get]
 func (s *ServerGin) userInfo(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 
@@ -155,22 +219,17 @@ func (s *ServerGin) userInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, userInfo)
 }
 
-func (s *ServerGin) updateToken(c *gin.Context) {
-	var req models.UpdateTokenRequest
-	if err := s.decodeAndValidate(c, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	oldToken := c.GetString("jwtCleanToken")
-	newToken, err := s.auth.UpdateTokenApp(c.Request.Context(), oldToken, req.AppId)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update newToken"})
-		return
-	}
-
-	c.JSON(http.StatusOK, models.UpdateTokenResponse{Token: newToken})
-}
-
+// users godoc
+// @Summary     Users list
+// @Description Список всех пользователей (только для admin).
+// @Tags        Admin
+// @Security    BearerAuth
+// @Produce     json
+// @Success     200 {object} models.Users
+// @Failure     401 {object} ErrorResponse "Нет/невалидный Bearer token"
+// @Failure     403 {object} ErrorResponse "Требуются права admin"
+// @Failure     500 {object} ErrorResponse "Ошибка получения списка"
+// @Router      /user/info [get]
 func (s *ServerGin) users(c *gin.Context) {
 	userId := c.GetInt64("userId")
 	isAdmin, err := s.auth.IsAdmin(c.Request.Context(), userId)
@@ -201,6 +260,49 @@ func (s *ServerGin) users(c *gin.Context) {
 	c.JSON(http.StatusOK, models.Users{Users: usersResp})
 }
 
+// updateToken godoc
+// @Summary     Update app token
+// @Description Обновляет токен приложения (refresh). Берёт текущий JWT из Authorization.
+// @Tags        Auth
+// @Security    BearerAuth
+// @Accept      json
+// @Produce     json
+// @Param       body body models.UpdateTokenRequest true "ID приложения"
+// @Success     200 {object} models.UpdateTokenResponse
+// @Failure     400 {object} ErrorResponse
+// @Failure     401 {object} ErrorResponse
+// @Failure     500 {object} ErrorResponse
+// @Router      /user/update_token [post]
+func (s *ServerGin) updateToken(c *gin.Context) {
+	var req models.UpdateTokenRequest
+	if err := s.decodeAndValidate(c, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	oldToken := c.GetString("jwtCleanToken")
+	newToken, err := s.auth.UpdateTokenApp(c.Request.Context(), oldToken, req.AppId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update newToken"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UpdateTokenResponse{Token: newToken})
+}
+
+// updatePassword godoc
+// @Summary     Update password
+// @Description Обновление пароля (сам себе или admin).
+// @Tags        User
+// @Security    BearerAuth
+// @Accept      json
+// @Produce     json
+// @Param       body body models.UpdatePasswordRequest true "Новый пароль"
+// @Success     200 {object} models.UpdatePasswordResponse
+// @Failure     400 {object} ErrorResponse
+// @Failure     401 {object} ErrorResponse
+// @Failure     403 {object} ErrorResponse
+// @Failure     500 {object} ErrorResponse
+// @Router      /user/ [put]
 func (s *ServerGin) updatePassword(c *gin.Context) {
 	var req models.UpdatePasswordRequest
 	if err := s.decodeAndValidate(c, &req); err != nil {
@@ -223,6 +325,20 @@ func (s *ServerGin) updatePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, models.UpdatePasswordResponse{Message: "Password updated"})
 }
 
+// removeUser godoc
+// @Summary     Remove user
+// @Description Удаление пользователя (сам себя или admin).
+// @Tags        User
+// @Security    BearerAuth
+// @Accept      json
+// @Produce     json
+// @Param       body body models.RemoveUserRequest true "User ID"
+// @Success     200 {object} models.RemoveUserResponse
+// @Failure     400 {object} ErrorResponse
+// @Failure     401 {object} ErrorResponse
+// @Failure     403 {object} ErrorResponse
+// @Failure     500 {object} ErrorResponse
+// @Router      /user/ [delete]
 func (s *ServerGin) removeUser(c *gin.Context) {
 	var req models.RemoveUserRequest
 	if err := s.decodeAndValidate(c, &req); err != nil {

@@ -1,10 +1,12 @@
 package app
 
 import (
-	httpapp "github.com/bmstu-itstech/sso/internal/app/http"
-	"github.com/bmstu-itstech/sso/internal/services/jwt"
 	"log"
 	"log/slog"
+
+	httpapp "github.com/bmstu-itstech/sso/internal/app/http"
+	"github.com/bmstu-itstech/sso/internal/repository/cache"
+	"github.com/bmstu-itstech/sso/internal/services/jwt"
 
 	grpcapp "github.com/bmstu-itstech/sso/internal/app/grpc"
 	"github.com/bmstu-itstech/sso/internal/config"
@@ -19,12 +21,13 @@ type App struct {
 }
 
 func New(logger *slog.Logger, cfg config.Config) *App {
-	repos, err := postgres.NewPostgresDB(cfg.Postgres)
+	repos, err := postgres.NewPostgresDB(cfg)
+	cacheApp, err := cache.NewAppCache(cfg)
 	jwtService := jwt.NewServiceJwt(cfg.JWT.TokenTTL)
 	if err != nil {
 		log.Fatal("db no connect", slog.String("error", err.Error()))
 	}
-	authService := services.New(logger, &repos, &repos, &repos, jwtService, &cfg)
+	authService := services.New(logger, &repos, &repos, cacheApp, jwtService, &cfg)
 	grpcSrv := grpcapp.New(logger, authService, cfg)
 
 	httpSrv := httpapp.New(logger, authService, &cfg)

@@ -20,23 +20,15 @@ type Repository struct {
 	db *sqlx.DB
 }
 
-func NewPostgresDB(cfg config.PostgresConfig) (Repository, error) {
+func NewPostgresDB(cfg config.Config) (Repository, error) {
 	const op = "repository.NewPostgresDB"
-	var connectionString string
 
-	if cfg.Url != "" {
-		connectionString = cfg.Url
-	} else {
-		connectionString = fmt.Sprintf(
-			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			cfg.Host, cfg.Port, cfg.UserName, cfg.Password, cfg.DB, cfg.SSLMode)
-	}
-
+	connectionString := cfg.GetPostgresUrl()
 	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {
 		return Repository{}, fmt.Errorf("%w: %s", err, op)
 	}
-	db.SetMaxOpenConns(100)                 // Максимум открытых соединений
+	db.SetMaxOpenConns(500)                 // Максимум открытых соединений
 	db.SetMaxIdleConns(20)                  // Максимум простаивающих соединений
 	db.SetConnMaxLifetime(5 * time.Minute)  // Время жизни соединения
 	db.SetConnMaxIdleTime(10 * time.Minute) // Время простоя соединения

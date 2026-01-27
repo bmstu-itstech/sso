@@ -14,3 +14,14 @@ CREATE TABLE IF NOT EXISTS apps (
     name VARCHAR(255) NOT NULL UNIQUE,
     secret_key VARCHAR(255) NOT NULL
 );
+
+CREATE OR REPLACE FUNCTION notify_table_update() RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM pg_notify('update_cache', TG_TABLE_NAME);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER secrets_changed
+    AFTER INSERT OR UPDATE OR DELETE ON apps
+    FOR EACH ROW EXECUTE FUNCTION notify_table_update();

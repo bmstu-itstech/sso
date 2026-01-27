@@ -23,8 +23,9 @@ ENV GIN_MODE=release
 # Бинарник
 COPY --from=builder /out/sso /app/sso
 
-# Порт из конфигурации
-EXPOSE 8080
+# Порты по умолчанию (HTTP + gRPC)
+EXPOSE 8081
+EXPOSE 44044
 
 # Запуск
 ENTRYPOINT ["/app/sso"]

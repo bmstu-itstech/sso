@@ -5,12 +5,13 @@ import (
 
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"github.com/bmstu-itstech/sso/internal/config"
+	"github.com/bmstu-itstech/sso/internal/domain/models"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type AuthGrpc interface {
-	//Test(ctx context.Context) (string, error)
+	VerifyToken(ctx context.Context, req *models.VerifyTokenServiceRequest) (models.VerifyTokenServiceResponse, error)
 }
 
 type serverApi struct {
@@ -28,5 +29,12 @@ func (s *serverApi) Ping(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty,
 }
 
 func (s *serverApi) VerifyToken(ctx context.Context, req *ssov1.VerifyTokenRequest) (*ssov1.VerifyTokenResponse, error) {
-	return nil, nil
+	tokenModel, err := s.auth.VerifyToken(ctx, &models.VerifyTokenServiceRequest{Token: req.Token, AppId: req.AppId})
+	if err != nil {
+		return nil, err
+	}
+	return &ssov1.VerifyTokenResponse{
+		IsAdmin: tokenModel.IsAdmin,
+		UserId:  tokenModel.Uid,
+	}, nil
 }

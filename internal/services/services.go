@@ -27,7 +27,7 @@ const (
 	appIdSSO = 0
 )
 
-type ServiceUser struct {
+type Service struct {
 	cfg          *config.Config
 	log          *slog.Logger
 	tokenService TokenService
@@ -37,8 +37,8 @@ type ServiceUser struct {
 	tokenTTL     time.Duration
 }
 
-func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv AppProvider, tokenService TokenService, cfg *config.Config) *ServiceUser {
-	return &ServiceUser{
+func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv AppProvider, tokenService TokenService, cfg *config.Config) *Service {
+	return &Service{
 		cfg:          cfg,
 		log:          log,
 		userSaver:    usrSaver,
@@ -71,7 +71,7 @@ type AppProvider interface {
 	App(ctx context.Context, appId int32) (models.AppRepos, error)
 }
 
-func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, email, fullName string) (userId int64, err error) {
+func (s *Service) RegisterNewUser(ctx context.Context, login, password, email, fullName string) (userId int64, err error) {
 	const op = "services.RegisterNewUser"
 
 	log := s.log.With(slog.String("op", op), slog.String("login", login))
@@ -96,7 +96,7 @@ func (s *ServiceUser) RegisterNewUser(ctx context.Context, login, password, emai
 	return id, nil
 }
 
-func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, password string) (token string, err error) {
+func (s *Service) Login(ctx context.Context, appId int32, login string, password string) (token string, err error) {
 	const op = "services.Login"
 
 	log := s.log.With(slog.String("op", op), slog.String("login", login))
@@ -146,7 +146,7 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 
 }
 
-func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error) {
+func (s *Service) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error) {
 	const op = "services.IsAdmin"
 
 	log := s.log.With(slog.String("op", op), slog.Int64("user_id", userId))
@@ -161,7 +161,7 @@ func (s *ServiceUser) IsAdmin(ctx context.Context, userId int64) (isAdmin bool, 
 	return isAdmin, nil
 }
 
-func (s *ServiceUser) UserInfo(ctx context.Context, userId int64) (models.UserServices, error) {
+func (s *Service) UserInfo(ctx context.Context, userId int64) (models.UserServices, error) {
 	const op = "services.UserInfo"
 
 	log := s.log.With(slog.String("op", op), slog.Int64("user_id", userId))
@@ -185,7 +185,7 @@ func (s *ServiceUser) UserInfo(ctx context.Context, userId int64) (models.UserSe
 	}, nil
 }
 
-func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) {
+func (s *Service) DeleteUser(ctx context.Context, userId int64) (err error) {
 	const op = "services.DeleteUser"
 
 	log := s.log.With(slog.String("op", op))
@@ -203,7 +203,7 @@ func (s *ServiceUser) DeleteUser(ctx context.Context, userId int64) (err error) 
 	return nil
 }
 
-func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassword string) (err error) {
+func (s *Service) UpdatePassword(ctx context.Context, userId int64, newPassword string) (err error) {
 	const op = "services.UpdatePassword"
 
 	log := s.log.With(slog.String("op", op))
@@ -227,7 +227,7 @@ func (s *ServiceUser) UpdatePassword(ctx context.Context, userId int64, newPassw
 	return nil
 }
 
-func (s *ServiceUser) UsersAll(ctx context.Context) ([]models.UserServices, error) {
+func (s *Service) UsersAll(ctx context.Context) ([]models.UserServices, error) {
 	const op = "services.UsersAll"
 
 	log := s.log.With(slog.String("op", op))
@@ -261,7 +261,7 @@ func (s *ServiceUser) UsersAll(ctx context.Context) ([]models.UserServices, erro
 // Callers must now provide appId directly when calling this function.
 // If you previously relied on context metadata for appId, update your code
 // to pass appId as an argument. This change may affect existing callers.
-func (s *ServiceUser) UpdateTokenApp(ctx context.Context, token string, appId int32) (string, error) {
+func (s *Service) UpdateTokenApp(ctx context.Context, token string, appId int32) (string, error) {
 	const op = "services.UpdateTokenApp"
 	log := s.log.With(slog.String("op", op))
 
@@ -301,7 +301,7 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context, token string, appId in
 
 // SignIn Функция, которая отвечает за валидацию токена, создана, чтобы снять ответственность
 // за валидацию токенов с прикладного слоя
-func (s *ServiceUser) SignIn(ctx context.Context, token string, appId int32) (tokenModel models.TokenInfo, err error) {
+func (s *Service) SignIn(ctx context.Context, token string, appId int32) (tokenModel models.TokenInfo, err error) {
 	const op = "services.SignIn"
 	log := s.log.With(slog.String("op", op), slog.Int64("app_id", int64(appId)))
 	appModel, err := s.appProvider.App(ctx, appId)
@@ -318,4 +318,24 @@ func (s *ServiceUser) SignIn(ctx context.Context, token string, appId int32) (to
 
 	log.Info("user sing in", slog.Any("models.TokenInfo:", tokenModel))
 	return tokenModel, nil
+}
+
+func (s *Service) VerifyToken(ctx context.Context, req *models.VerifyTokenServiceRequest) (models.VerifyTokenServiceResponse, error) {
+	const op = "services.VerifyToken"
+	log := s.log.With(slog.String("op", op))
+	app, err := s.appProvider.App(ctx, req.AppId)
+	if err != nil {
+		log.Error("failed to get app: ", err.Error())
+		return models.VerifyTokenServiceResponse{}, err
+	}
+
+	modelToken, err := s.tokenService.Parse(req.Token, app.Secret)
+	if err != nil {
+		log.Error("failed to parse token: ", err.Error())
+		return models.VerifyTokenServiceResponse{}, err
+	}
+
+	return models.VerifyTokenServiceResponse{
+		TokenInfo: modelToken,
+	}, nil
 }

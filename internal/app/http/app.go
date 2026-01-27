@@ -37,7 +37,7 @@ func (a *App) MustRun() {
 		Handler: a.router,
 	}
 
-	a.log.Info("Starting server on port %d", a.port)
+	a.log.Info("http server starting", slog.Int("port", a.port))
 	if err := a.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		panic(fmt.Sprintf("fail to start: %v", err))
 	}

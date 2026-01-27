@@ -1,0 +1,431 @@
+basePath: /api/v1
+definitions:
+  http_server.ErrorResponse:
+    description: 'Ошибка запроса. Поле error — человекочитаемое описание. Пример:
+      {"error":"Permission denied"}'
+    properties:
+      error:
+        example: Permission denied
+        type: string
+    type: object
+  models.IsAdminResponse:
+    properties:
+      isAdmin:
+        type: boolean
+    type: object
+  models.LoginRequest:
+    properties:
+      appId:
+        type: integer
+      login:
+        type: string
+      password:
+        type: string
+    required:
+    - login
+    - password
+    type: object
+  models.LoginResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  models.RegisterRequest:
+    properties:
+      email:
+        type: string
+      fullName:
+        type: string
+      login:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - fullName
+    - login
+    - password
+    type: object
+  models.RegisterResponse:
+    properties:
+      userId:
+        type: integer
+    type: object
+  models.RemoveUserRequest:
+    properties:
+      userId:
+        type: integer
+    required:
+    - userId
+    type: object
+  models.RemoveUserResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.UpdatePasswordRequest:
+    properties:
+      newPassword:
+        minLength: 8
+        type: string
+      userId:
+        type: integer
+    required:
+    - newPassword
+    - userId
+    type: object
+  models.UpdatePasswordResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.UpdateTokenRequest:
+    properties:
+      appId:
+        type: integer
+    required:
+    - appId
+    type: object
+  models.UpdateTokenResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  models.User:
+    properties:
+      createdAt:
+        type: string
+      email:
+        type: string
+      fullName:
+        type: string
+      isAdmin:
+        type: boolean
+      login:
+        type: string
+      updatedAt:
+        type: string
+      userId:
+        type: integer
+    type: object
+  models.Users:
+    properties:
+      users:
+        items:
+          $ref: '#/definitions/models.User'
+        type: array
+    type: object
+host: localhost:8081
+info:
+  contact:
+    name: SSO team
+    url: https://github.com/bmstu-itstech/sso
+  description: |-
+    Ошибка запроса.
+    Поле error — человекочитаемое описание.
+    Пример: {"error":"Permission denied"}
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: https://example.com/terms
+  title: SSO API
+  version: 1.0.0
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Логин пользователя. Возвращает JWT.
+      parameters:
+      - description: Данные входа
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LoginResponse'
+        "400":
+          description: Некорректный JSON или не пройдена валидация
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "401":
+          description: Неверные учётные данные
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      summary: Login
+      tags:
+      - Auth
+  /ping:
+    get:
+      description: Проверка доступности сервиса.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - Health
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Регистрация нового пользователя.
+      parameters:
+      - description: Данные регистрации
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RegisterResponse'
+        "400":
+          description: Некорректный JSON или не пройдена валидация
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "409":
+          description: Пользователь уже существует
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      summary: Register
+      tags:
+      - Auth
+  /user/:
+    delete:
+      consumes:
+      - application/json
+      description: Удаление пользователя (сам себя или admin).
+      parameters:
+      - description: User ID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RemoveUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RemoveUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove user
+      tags:
+      - User
+    put:
+      consumes:
+      - application/json
+      description: Обновление пароля (сам себе или admin).
+      parameters:
+      - description: Новый пароль
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdatePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UpdatePasswordResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update password
+      tags:
+      - User
+  /user/info:
+    get:
+      description: Список всех пользователей (только для admin).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Users'
+        "401":
+          description: Нет/невалидный Bearer token
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "403":
+          description: Требуются права admin
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "500":
+          description: Ошибка получения списка
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Users list
+      tags:
+      - Admin
+  /user/info/{id}:
+    get:
+      description: Получение информации о пользователе по ID.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Неверный формат id
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "401":
+          description: Нет/невалидный Bearer token
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "403":
+          description: Недостаточно прав
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "404":
+          description: Пользователь не найден
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: User info
+      tags:
+      - User
+  /user/is_admin/{id}:
+    get:
+      description: Проверка, является ли пользователь админом.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.IsAdminResponse'
+        "400":
+          description: Неверный формат id
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "401":
+          description: Нет/невалидный Bearer token
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "403":
+          description: Недостаточно прав
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "404":
+          description: Пользователь не найден
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Check admin
+      tags:
+      - User
+  /user/update_token:
+    post:
+      consumes:
+      - application/json
+      description: Обновляет токен приложения (refresh). Берёт текущий JWT из Authorization.
+      parameters:
+      - description: ID приложения
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UpdateTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http_server.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update app token
+      tags:
+      - Auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
