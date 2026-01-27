@@ -1,12 +1,14 @@
 package models
 
 type TokenInfo struct {
-	Uid   int64
-	AppId int32
+	Uid     int64
+	AppId   int32
+	IsAdmin bool
 }
 
 type TokenModel struct {
-	Uid    int64
-	AppId  int32
-	Secret string
+	Uid     int64
+	AppId   int32
+	Secret  string
+	IsAdmin bool
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bmstu-itstech/sso/internal/config"
-	authgrpc "github.com/bmstu-itstech/sso/internal/grpc/auth"
-	http_server "github.com/bmstu-itstech/sso/internal/http"
-	"github.com/gin-gonic/gin"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/bmstu-itstech/sso/internal/config"
+	http_server "github.com/bmstu-itstech/sso/internal/http"
+	"github.com/gin-gonic/gin"
 )
 
 type App struct {
@@ -21,7 +21,7 @@ type App struct {
 	cfg    *config.Config
 }
 
-func New(log *slog.Logger, authServer authgrpc.AuthGrpc, cfg *config.Config) *App {
+func New(log *slog.Logger, authServer http_server.Auth, cfg *config.Config) *App {
 	httpSrv := http_server.New(authServer, cfg).InitRouter()
 	return &App{
 		log:    log,
@@ -42,6 +42,8 @@ func (a *App) MustRun() {
 		panic(fmt.Sprintf("fail to start: %v", err))
 	}
 }
+
+// eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOjEsImV4cCI6MTc2OTU0NjM4MCwiaXNfYWRtaW4iOnsiVWlkIjo0OTgzNzY3MDA1NDQ4MTYwODU3LCJBcHBJZCI6MSwiU2VjcmV0IjoidGVzdC1zZWNyZXQiLCJJc0FkbWluIjpmYWxzZX0sInVpZCI6IjQ5ODM3NjcwMDU0NDgxNjA4NTcifQ.5wrP_2bg7m72eLlsLlRtr4yTNQsfuhO227YJPESUTdo
 
 func (a *App) Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

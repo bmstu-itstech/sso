@@ -2,10 +2,11 @@ package middleware
 
 import (
 	"context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/status"
 	"log/slog"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 func LoggerInterceptor(log *slog.Logger) grpc.UnaryServerInterceptor {

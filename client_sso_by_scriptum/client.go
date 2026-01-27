@@ -1,14 +1,12 @@
 package client_sso_by_scriptum
 
 import (
-	"context"
+	"log/slog"
+	"net"
+
 	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-	"log/slog"
-	"net"
-	"strconv"
 )
 
 type Config struct {
@@ -49,30 +47,30 @@ func NewSSOClient(config Config, l *slog.Logger) (*SSO, func() error, error) {
 	}, closeFn, nil
 }
 
-// IsAdmin checks if the user with the given uid has admin privileges. uid is int64!!!
-func (s *SSO) IsAdmin(ctx context.Context, uid int64) (bool, error) {
-	const op = "client_sso_by_scriptum.IsAdmin"
-
-	l := s.l.With(
-		slog.String("op", op),
-		slog.Int64("uid", uid),
-	)
-
-	l.Debug("Checking admin status")
-	// Добавляем метаданные с AppId
-	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		"x-user-id", strconv.FormatInt(int64(s.AppId), 10),
-	))
-	// Вызываем метод IsAdmin на сервере SSO
-	resp, err := s.api.IsAdmin(ctx, &ssov1.IsAdminRequest{
-		UserId: uid,
-	})
-	if err != nil {
-		l.Error("Failed to check admin status: ", err.Error())
-		return false, err
-	}
-
-	l.Debug("Admin status: ", resp.IsAdmin)
-
-	return resp.IsAdmin, nil
-}
+//// IsAdmin checks if the user with the given uid has admin privileges. uid is int64!!!
+//func (s *SSO) IsAdmin(ctx context.Context, uid int64) (bool, error) {
+//	const op = "client_sso_by_scriptum.IsAdmin"
+//
+//	l := s.l.With(
+//		slog.String("op", op),
+//		slog.Int64("uid", uid),
+//	)
+//
+//	l.Debug("Checking admin status")
+//	// Добавляем метаданные с AppId
+//	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
+//		"x-user-id", strconv.FormatInt(int64(s.AppId), 10),
+//	))
+//	// Вызываем метод IsAdmin на сервере SSO
+//	resp, err := s.api.IsAdmin(ctx, &ssov1.IsAdminRequest{
+//		UserId: uid,
+//	})
+//	if err != nil {
+//		l.Error("Failed to check admin status: ", err.Error())
+//		return false, err
+//	}
+//
+//	l.Debug("Admin status: ", resp.IsAdmin)
+//
+//	return resp.IsAdmin, nil
+//}

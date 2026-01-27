@@ -3,7 +3,7 @@ package http_server
 import (
 	"context"
 	"net/http"
-	"strings"
+	"strconv"
 
 	"github.com/bmstu-itstech/sso/internal/config"
 	"github.com/bmstu-itstech/sso/internal/domain/models"
@@ -18,16 +18,16 @@ type Auth interface {
 	UpdatePassword(ctx context.Context, id int64, newPassword string) error
 	DeleteUser(ctx context.Context, userId int64) error
 
-	SignIn(ctx context.Context, appId int32) (userId int64, err error)
+	SignIn(ctx context.Context, token string, appId int32) (tokenModel models.TokenInfo, err error)
 	IsAdmin(ctx context.Context, userId int64) (isAdmin bool, err error)
 
 	UserInfo(ctx context.Context, id int64) (user models.UserServices, err error)
 	UsersAll(ctx context.Context) ([]models.UserServices, error)
 
-	UpdateTokenApp(ctx context.Context, appId int32) (newToken string, err error)
+	UpdateTokenApp(ctx context.Context, token string, appId int32) (string, error)
 }
 
-const ssoAppID int32 = 1 // ID приложения
+const ssoAppID int32 = 0 // ID приложения
 
 type ServerGin struct {
 	auth     Auth
@@ -47,53 +47,24 @@ func (s *ServerGin) InitRouter() *gin.Engine {
 
 	router := gin.Default()
 	api := router.Group("/api")
+	v1 := api.Group("/v1")
 	{
-		public := api.Group("/public")
-		{
-			public.GET("/ping", s.ping)
-			public.POST("/login", s.login)
-			public.POST("/register", s.register)
-		}
+		v1.GET("/ping", s.ping)
+		v1.POST("/login", s.login)
+		v1.POST("/register", s.register)
 
-		private := api.Group("/api/private", s.authMiddleware())
+		userGroup := v1.Group("/user", s.authMiddleware())
 		{
-			private.POST("/is_admin", s.isAdmin)
-			private.POST("/user/info", s.userInfo)
-			private.POST("/update_token", s.updateToken)
-			private.GET("/users", s.users)
-			private.POST("/update_password", s.updatePassword)
-			private.POST("/remove_user", s.removeUser)
+			userGroup.GET("/is_admin/:id", s.isAdmin)
+			userGroup.GET("/info/:id", s.userInfo)
+			userGroup.GET("/info", s.users)
+			userGroup.POST("/update_token", s.updateToken)
+			userGroup.PUT("/", s.updatePassword)
+			userGroup.DELETE("/", s.removeUser)
 		}
 	}
+
 	return router
-}
-
-// Middleware для проверки JWT токена
-func (s *ServerGin) authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
-			return
-		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
-			return
-		}
-
-		token := parts[1]
-		_ = token
-		userId, err := s.auth.SignIn(c.Request.Context(), ssoAppID)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
-			return
-		}
-
-		c.Set("userId", userId)
-		c.Next()
-	}
 }
 
 // Helper для декодирования и валидации JSON
@@ -143,14 +114,16 @@ func (s *ServerGin) register(c *gin.Context) {
 
 func (s *ServerGin) isAdmin(c *gin.Context) {
 	var req models.IsAdminRequest
-	if err := s.decodeAndValidate(c, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
 		return
 	}
+	req.UserId = id
 
 	userId := c.GetInt64("userId")
-	isAdmin, err := s.auth.IsAdmin(c.Request.Context(), userId)
-	if err != nil || (!isAdmin && userId != req.UserId) {
+	isAdmin := c.GetBool("isAdmin")
+	if !isAdmin && userId != req.UserId {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
 		return
 	}
@@ -160,25 +133,20 @@ func (s *ServerGin) isAdmin(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
-
 	c.JSON(http.StatusOK, models.IsAdminResponse{IsAdmin: isAdmin})
 }
 
 func (s *ServerGin) userInfo(c *gin.Context) {
-	var req models.UserInfoRequest
-	if err := s.decodeAndValidate(c, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 
 	userId := c.GetInt64("userId")
 	isAdmin, err := s.auth.IsAdmin(c.Request.Context(), userId)
-	if err != nil || (!isAdmin && userId != req.UserId) {
+	if err != nil || (!isAdmin && userId != id) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
 		return
 	}
 
-	userInfo, err := s.auth.UserInfo(c.Request.Context(), req.UserId)
+	userInfo, err := s.auth.UserInfo(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
@@ -193,14 +161,14 @@ func (s *ServerGin) updateToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	token, err := s.auth.UpdateTokenApp(c.Request.Context(), req.AppId)
+	oldToken := c.GetString("jwtCleanToken")
+	newToken, err := s.auth.UpdateTokenApp(c.Request.Context(), oldToken, req.AppId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update newToken"})
 		return
 	}
 
-	c.JSON(http.StatusOK, models.UpdateTokenResponse{Token: token})
+	c.JSON(http.StatusOK, models.UpdateTokenResponse{Token: newToken})
 }
 
 func (s *ServerGin) users(c *gin.Context) {

@@ -5,7 +5,7 @@ import (
 )
 
 type LoginRequest struct {
-	AppId    int32  `json:"appId" validate:"required"`
+	AppId    int32  `json:"appId"`
 	Login    string `json:"login" validate:"required"`
 	Password string `json:"password" validate:"required"`
 }

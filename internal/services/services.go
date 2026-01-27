@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"google.golang.org/grpc/metadata"
 	"log/slog"
 	"math/rand"
-	"strconv"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -53,7 +51,7 @@ func New(log *slog.Logger, usrSaver UserSaver, usrProv UserProvider, appProv App
 
 type TokenService interface {
 	NewToken(ctx context.Context, model models.TokenModel) (token string, err error)
-	//ParseTokenApp(ctx context.Context, secretApp string) (app models.TokenInfo, err error)
+	Parse(tokenString string, secret string) (app models.TokenInfo, err error)
 }
 
 type UserSaver interface {
@@ -128,19 +126,15 @@ func (s *ServiceUser) Login(ctx context.Context, appId int32, login string, pass
 	log.Info("user logged in")
 
 	var jwtModel models.TokenModel
-	if appId == appIdSSO {
-		jwtModel.AppId = appIdSSO
-		jwtModel.Secret = s.cfg.JWT.Secret
-	} else {
-		app, err := s.appProvider.App(ctx, appId)
-		if err != nil {
-			log.Error("failed to get app", err.Error())
-			return "", fmt.Errorf("%s: %w", op, err)
-		}
-		jwtModel.AppId = app.Id
-		jwtModel.Secret = app.Secret
+	app, err := s.appProvider.App(ctx, appId)
+	if err != nil {
+		log.Error("failed to get app", err.Error())
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
+	jwtModel.AppId = app.Id
+	jwtModel.Secret = app.Secret
 	jwtModel.Uid = user.ID
+	jwtModel.IsAdmin = user.IsAdmin
 
 	token, err = s.tokenService.NewToken(ctx, jwtModel)
 	if err != nil {
@@ -267,11 +261,11 @@ func (s *ServiceUser) UsersAll(ctx context.Context) ([]models.UserServices, erro
 // Callers must now provide appId directly when calling this function.
 // If you previously relied on context metadata for appId, update your code
 // to pass appId as an argument. This change may affect existing callers.
-func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, error) {
+func (s *ServiceUser) UpdateTokenApp(ctx context.Context, token string, appId int32) (string, error) {
 	const op = "services.UpdateTokenApp"
 	log := s.log.With(slog.String("op", op))
 
-	userId, err := s.SignIn(ctx, appId)
+	jwtModel, err := s.SignIn(ctx, token, appId)
 	if err != nil {
 		log.Warn("failed to sign in: ", err.Error())
 		return "", err
@@ -293,7 +287,7 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, 
 		ctx,
 		models.TokenModel{
 			AppId:  appId,
-			Uid:    userId,
+			Uid:    jwtModel.Uid,
 			Secret: appSecret,
 		})
 	if err != nil {
@@ -307,28 +301,21 @@ func (s *ServiceUser) UpdateTokenApp(ctx context.Context, appId int32) (string, 
 
 // SignIn Функция, которая отвечает за валидацию токена, создана, чтобы снять ответственность
 // за валидацию токенов с прикладного слоя
-func (s *ServiceUser) SignIn(ctx context.Context, appId int32) (int64, error) {
+func (s *ServiceUser) SignIn(ctx context.Context, token string, appId int32) (tokenModel models.TokenInfo, err error) {
 	const op = "services.SignIn"
-
 	log := s.log.With(slog.String("op", op), slog.Int64("app_id", int64(appId)))
-
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		log.Warn("missing metadata in context")
-		return 0, ErrValidToken
-	}
-	userId := md.Get("x-user-id")
-	if len(userId) == 0 {
-		log.Warn("missing uid in metadata")
-		return 0, ErrValidToken
-	}
-	userIdInt64, err := strconv.ParseInt(userId[0], 10, 64)
+	appModel, err := s.appProvider.App(ctx, appId)
 	if err != nil {
-		log.Warn("invalid uid in metadata", err)
-		return 0, ErrValidToken
+		log.Error("failed to get app: ", err.Error())
+		return models.TokenInfo{}, err
+	}
+	secret := appModel.Secret
+	tokenModel, err = s.tokenService.Parse(token, secret)
+	if err != nil {
+		s.log.Error("failed to parse token: ", err.Error())
+		return models.TokenInfo{}, err
 	}
 
-	log.Info("user sing in", slog.Int64("user_id", userIdInt64))
-
-	return userIdInt64, nil
+	log.Info("user sing in", slog.Any("models.TokenInfo:", tokenModel))
+	return tokenModel, nil
 }
