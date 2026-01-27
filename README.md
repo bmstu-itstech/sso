@@ -42,18 +42,18 @@ docker-compose up -d
 
 ```mermaid
 graph TD
-  FE[Frontend] -->|HTTP JSON| HTTP[HTTP API (Gin)]
-  SVC1[Service A] -->|gRPC| GRPC[gRPC API]
-  SVC2[Service B] -->|gRPC| GRPC
+  FE[Frontend] -->|HTTP JSON| HTTP_API[HTTP API (Gin)]
+  SVC1[Service A] -->|gRPC| GRPC_API[gRPC API]
+  SVC2[Service B] -->|gRPC| GRPC_API
 
-  HTTP --> MW[JWT middleware]
-  MW --> Core[Service layer]
-  GRPC --> Core
+  HTTP_API --> MW[JWT middleware]
+  MW --> CORE[Service layer]
+  GRPC_API --> CORE
 
-  Core --> Cache[(In-memory cache)]
-  Cache --> DB[(PostgreSQL)]
-  Core --> DB
-  Core --> Jwt[JWT service]
+  CORE --> CACHE[(In-memory cache)]
+  CACHE --> DB[(PostgreSQL)]
+  CORE --> DB
+  CORE --> JWT_SVC[JWT service]
 ```
 
 ### Ключевые слои
@@ -462,5 +462,3 @@ uid = 123
 r = requests.get(f'{BASE}/api/v1/user/info/{uid}', headers={'Authorization': f'Bearer {token}'})
 print(r.status_code, r.json())
 ```
-
-> Если хотите самый правильный backend UX: добавьте HTTP endpoint `/api/v1/verify_token` для сервисов без gRPC.
