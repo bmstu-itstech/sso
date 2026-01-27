@@ -1,705 +1,466 @@
-# SSO — Single Sign-On Service (AuthN/AuthZ)
+# SSO — Single Sign-On (AuthN/AuthZ)
 
-> **TL;DR**: Сервис централизованной аутентификации и авторизации.
-> Выдаёт и проверяет JWT, хранит пользователей в PostgreSQL, ускоряет горячие чтения через in-memory cache.
-> Даёт **HTTP API (Gin)** для фронта и интеграций + **gRPC API** для микросервисов.
+**SSO** — сервис централизованной аутентификации/авторизации для экосистемы приложений.
+Выдаёт и валидирует **JWT**, хранит пользователей в **PostgreSQL**, ускоряет горячие чтения через **in-memory cache**.
 
----
+## 🚀 Быстрый старт (1 команда)
 
-## 📌 Суть проекта
+```bash
+docker-compose up -d
+```
 
-### Что такое SSO в рамках этого репозитория
-SSO (Single Sign-On) в данном проекте — это **единая точка входа**, которая:
-
-1. Регистрирует пользователя.
-2. Проверяет логин/пароль.
-3. Выдаёт **JWT** как “пропуск” в экосистему сервисов.
-4. Позволяет другим сервисам:
-   - быстро понять, кто пользователь (`uid`),
-   - имеет ли он роль admin,
-   - выполнить операции управления пользователем.
-
-### Для кого этот сервис
-- Для **фронтенда**: логин/регистрация по HTTP + Swagger документация.
-- Для **бэкенд‑сервисов**: проверка токена/прав через gRPC или самостоятельная валидация JWT (в зависимости от политики безопасности).
-
-### Что вы получаете «из коробки»
-- JWT‑аутентификация
-- RBAC на минималках (`isAdmin`)
-- Сервисный слой с повторным использованием логики
-- Postgres‑хранилище + in-memory cache
-- gRPC + HTTP (Gin)
-- Swagger UI
-- SQL миграции
+- Ping: `GET http://localhost:{HTTP_PORT}/api/v1/ping`
+- Swagger UI: `http://localhost:{HTTP_PORT}/swagger/index.html`
 
 ---
 
-## ✨ Уникальность продукта (pragmatic)
+## ✨ Чем проект реально полезен (уникальность)
 
-- **Два транспорта — одна бизнес‑логика**.
-  HTTP и gRPC используют один и тот же сервисный слой, что снижает дублирование и риск расхождения поведения.
-
-- **JWT‑first дизайн**.
-  Сервер выдаёт токен сразу при логине, middleware валидирует токен и складывает `uid/isAdmin/appId` в context.
-
-- **Кэш поверх Postgres**.
-  Postgres — источник правды, кэш — ускоритель чтений.
-
-- **Документация — часть продукта**.
-  Swagger генерируется из кода и отдаётся самим HTTP сервером.
+- **Одна бизнес-логика → два транспорта**: HTTP (Gin) + gRPC используют один сервисный слой.
+- **JWT-first**: middleware валидирует токен и пробрасывает `uid/isAdmin/appId` в контекст.
+- **RBAC без оверхеда**: базовая модель прав `isAdmin`.
+- **Cache поверх Postgres**: Postgres — источник правды, кэш — ускорение чтений.
+- **Документация как код**: Swagger генерируется из аннотаций и отдаётся самим сервисом.
 
 ---
 
-## 🛠️ Стек технологий
+## 🛠️ Стек
 
-### Язык / платформа
-- **Go** (см. `go.mod`)
-
-### Транспорт
-- HTTP: **Gin** (`github.com/gin-gonic/gin`)
-- gRPC: `google.golang.org/grpc`
-
-### Crypto / безопасность
-- JWT: `github.com/golang-jwt/jwt/v5`
-- bcrypt: `golang.org/x/crypto/bcrypt`
-
-### Данные
-- PostgreSQL: `github.com/lib/pq`
-- SQL helper: `github.com/jmoiron/sqlx`
-
-### Валидация
-- `github.com/go-playground/validator/v10`
-
-### Документация
-- Swagger (swag): `github.com/swaggo/swag` + `github.com/swaggo/gin-swagger`
-
-### Инфраструктура
-- Docker
-- Docker Compose
-- migrate: `migrate/migrate` (через контейнер или локально)
+- Go
+- HTTP: Gin
+- gRPC
+- JWT (HS256)
+- bcrypt
+- PostgreSQL + sqlx
+- in-memory cache
+- migrations: migrate
+- Docker / Docker Compose
 
 ---
 
-## 🏗️ Архитектура
-
-### Высокоуровневая схема
-
-Сервис предоставляет **две внешние поверхности**:
-- HTTP API для клиентов (browser/mobile/frontend).
-- gRPC API для сервисов внутри кластера.
-
-При этом ядро обработки (Service layer) едино.
+## 🏗️ Архитектура (коротко)
 
 ```mermaid
 graph TD
+  FE[Frontend] -->|HTTP JSON| HTTP[HTTP API (Gin)]
+  SVC1[Service A] -->|gRPC| GRPC[gRPC API]
+  SVC2[Service B] -->|gRPC| GRPC
 
-    subgraph "Clients"
-        FE[Frontend / Mobile / Browser]
-        BE[Other Backend Services]
-    end
+  HTTP --> MW[JWT middleware]
+  MW --> Core[Service layer]
+  GRPC --> Core
 
-    subgraph "SSO Service"
-        HTTP[HTTP API (Gin)]
-        GRPC[gRPC API]
-        MW[JWT Middleware]
-        SVC[Service Layer]
-        JWT[JWT Service]
-        CACHE[(In-memory cache)]
-        DB[(PostgreSQL)]
-    end
-
-    FE -->|JSON over HTTP| HTTP
-    BE -->|gRPC calls| GRPC
-
-    HTTP --> MW
-    MW --> SVC
-    GRPC --> SVC
-
-    SVC --> JWT
-    SVC --> CACHE
-    CACHE --> DB
-    SVC --> DB
+  Core --> Cache[(In-memory cache)]
+  Cache --> DB[(PostgreSQL)]
+  Core --> DB
+  Core --> Jwt[JWT service]
 ```
 
-### Поток логина и выдачи токена
-
-```mermaid
-graph LR
-    A[POST /api/v1/login] --> B[Validate JSON]
-    B --> C[Check password (bcrypt)]
-    C --> D[Generate JWT]
-    D --> E[Return {token}]
-```
-
-### Поток приватного запроса (JWT middleware)
-
-```mermaid
-graph TD
-    R[Request with Authorization: Bearer JWT] --> M[authMiddleware]
-    M -->|Parse + Verify| P[JWT Parse]
-    P -->|OK| Ctx[ctx: uid/isAdmin/appId]
-    Ctx --> H[Handler]
-    P -->|Fail| U[401 Unauthorized]
-```
-
-### Слои проекта
-
-- `internal/http` — HTTP слой: роутинг, middleware, JSON binding, swagger endpoint.
-- `internal/grpc` — gRPC слой: handlers + interceptors.
-- `internal/services` — бизнес‑логика: регистрация, логин, user management.
-- `internal/repository/postgres` — запросы к PostgreSQL.
-- `internal/repository/cache` — in-memory кэш.
-- `internal/config` — конфигурация через env/yaml.
-- `migrations` — SQL миграции.
+### Ключевые слои
+- HTTP роуты: `internal/http/server.go`
+- HTTP middleware: `internal/http/middleware.go`
+- DTO: `internal/domain/models/http.go`
+- gRPC: `internal/grpc/auth` + `internal/app/grpc`
+- Business logic: `internal/services`
+- DB: `internal/repository/postgres`
+- Cache: `internal/repository/cache`
 
 ---
 
-## 📁 Структура репозитория (расширенно)
+## 🌐 HTTP API (основное)
 
-```text
-.
-├── cmd/
-│   ├── sso/                      # Entry point: поднимает HTTP + gRPC
-│   └── client/                   # Пример клиента (может быть устаревшим)
-├── internal/
-│   ├── app/
-│   │   ├── grpc/                 # gRPC app wiring
-│   │   └── http/                 # HTTP app wiring
-│   ├── config/                   # viper + переменные окружения
-│   ├── domain/
-│   │   └── models/               # DTO и доменные модели
-│   ├── grpc/
-│   │   ├── auth/                 # gRPC сервер для auth
-│   │   └── middleware/           # gRPC interceptor
-│   ├── http/                     # Gin server (routes + middleware)
-│   ├── repository/
-│   │   ├── cache/                # In-memory cache
-│   │   └── postgres/             # Postgres repository
-│   ├── services/                 # Сервисный слой
-│   │   └── jwt/                  # JWT parse/generate
-│   └── logs/                     # slog handlers
-├── migrations/                   # SQL миграции
-├── docs/                         # swagger.json/yaml (генерируется)
-└── tests/
-    ├── http_test/                # unit-тесты HTTP слоя
-    ├── http_integration_test/    # интеграционные тесты HTTP (нужен поднятый сервис)
-    └── grpc_test/                # gRPC тесты (может требовать синхронизации с proto)
-```
+BasePath: `/api/v1`
 
----
+**Public**
+- `GET  /ping`
+- `POST /login`
+- `POST /register`
 
-## 🔐 Модель безопасности
+**Private (нужен Authorization: Bearer {JWT})**
+- `GET    /user/is_admin/:id`
+- `GET    /user/info/:id`
+- `GET    /user/info` (обычно admin)
+- `POST   /user/update_token`
+- `PUT    /user/` (update password)
+- `DELETE /user/` (remove user)
 
-### JWT
-JWT — это токен, который содержит (минимально):
-- `uid` — идентификатор пользователя
-- `app_id` — идентификатор приложения (если применимо)
-- `is_admin` — признак роли
-- `exp` — срок жизни
-
-JWT подписывается секретом (HMAC).
-
-### Как передавать токен
-HTTP:
-- `Authorization: Bearer {JWT}`
-
-gRPC:
-- как metadata (зависит от конкретных proto; в проекте уже есть middleware/интерсепторы)
-
-### RBAC
-В проекте используется простая модель:
-- `isAdmin = true` — администратор
-- `isAdmin = false` — обычный пользователь
-
-Правила:
-- Пользователь может получать/обновлять свои данные.
-- Администратор может получать список пользователей и управлять любым пользователем.
-
----
-
-## 🧠 Postgres + Cache (как это работает)
-
-### Postgres — источник правды
-Postgres хранит первичные данные:
-- пользователи
-- хэши паролей
-- роль/admin flag
-- аудиты/таймстемпы (если есть)
-
-### In-memory cache — ускорение чтений
-Кэш нужен для горячих операций, где:
-- нагрузка чтения >> нагрузка записи,
-- допустима eventual consistency на коротком окне,
-- выгодно уменьшить round-trip в Postgres.
-
-⚠️ Ограничения:
-- кэш не распределённый
-- кэш очищается при рестарте
-- при нескольких репликах кэш у каждой реплики свой
-
-Сценарии, где кэш помогает:
-- частая проверка admin
-- частое получение user info одного пользователя
-
-Сценарии, где Postgres обязательно:
-- регистрация
-- смена пароля
-- удаление пользователя
-
----
-
-## 🌐 HTTP API (Gin)
-
-### BasePath
-- `/api/v1`
-
-### Публичные эндпоинты
-- `GET  /api/v1/ping`
-- `POST /api/v1/login`
-- `POST /api/v1/register`
-
-### Приватные эндпоинты (JWT обязателен)
-- `GET    /api/v1/user/is_admin/:id`
-- `GET    /api/v1/user/info/:id`
-- `GET    /api/v1/user/info` (обычно admin)
-- `POST   /api/v1/user/update_token`
-- `PUT    /api/v1/user/`
-- `DELETE /api/v1/user/`
-
-### Контракты JSON
-Фактические DTO лежат в `internal/domain/models/http.go`.
-
-Примеры:
-
-**Login**
+**Error contract**
 ```json
-{
-  "appId": 1,
-  "login": "alice",
-  "password": "super-secret"
-}
+{ "error": "message" }
 ```
-
-**Login Response**
-```json
-{
-  "token": "{jwt}"
-}
-```
-
-**Register**
-```json
-{
-  "login": "alice",
-  "password": "super-secret-123",
-  "email": "alice@example.com",
-  "fullName": "Alice Doe"
-}
-```
-
-### Ошибки
-Текущий контракт ошибок:
-```json
-{
-  "error": "Permission denied"
-}
-```
-
-Статусы:
-- `400` — неверный JSON/валидация
-- `401` — невалидный токен/нет заголовка
-- `403` — недостаточно прав
-- `404` — сущность не найдена
-- `409` — конфликт (например, user already exists)
-- `500` — внутренняя ошибка
 
 ---
 
-## 📡 gRPC API
+## 📚 Swagger
 
-> gRPC контракт зависит от proto (подключён через модуль сгенерированных протобуфов).
-> См. `internal/grpc/auth`.
+Swagger генерируется из аннотаций в коде и отдаётся самим HTTP сервером.
 
-Рекомендованный подход:
-- использовать gRPC для межсервисных вызовов
-- использовать HTTP как “public edge”
-
----
-
-## 📚 Документация (Swagger)
-
-Swagger генерируется автоматически на основе аннотаций в коде.
-
+### Где открыть
 - UI: `http://{host}:{HTTP_PORT}/swagger/index.html`
-- JSON: `http://{host}:{HTTP_PORT}/swagger/doc.json`
+- OpenAPI JSON: `http://{host}:{HTTP_PORT}/swagger/doc.json`
 
-### Как обновить Swagger
+### Как пользоваться (чтобы не страдать)
+1) Откройте UI.
+2) Нажмите **Authorize**.
+3) Вставьте токен в формате:
+
+```
+Bearer {JWT}
+```
+
+После этого можно вызывать приватные ручки прямо из Swagger UI.
+
+### Обновить документацию
 
 ```bash
 swag init -g internal/http/docs.go -o ./docs
 ```
 
-### Сгенерированные файлы
+Артефакты генерации:
 - `docs/swagger.json`
 - `docs/swagger.yaml`
 - `docs/docs.go`
 
 ---
 
-## ⚙️ Конфигурация
+## 🗄️ Postgres + Cache
 
-Конфиг читается через `viper` (см. `internal/config/config.go`).
-
-### Ключевые переменные
-
-#### HTTP
-- `HTTP_PORT` — порт HTTP сервера
-
-#### gRPC
-- `GRPC_PORT` — порт gRPC
-- `GRPC_TIMEOUT` — таймауты (если используются)
-
-#### Postgres
-- `POSTGRES_HOST`
-- `POSTGRES_EXTERNAL_PORT`
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_SSL_MODE`
-- `POSTGRES_URI` (если используется как full DSN)
-
-#### JWT
-- `JWT_SECRET`
-- `JWT_TOKEN_TTL`
+- Postgres — **источник правды** (регистрация/пароли/роль/пользователи).
+- In-memory cache — **ускорение чтений** (не распределённый, очищается при рестарте, у каждой реплики свой).
 
 ---
 
-## 🚀 Быстрый старт (Docker Compose)
+## 🗄️ Миграции
 
-Если вы хотите “максимально быстро поднять всё” — достаточно:
+- лежат в `migrations/`
+- в `docker-compose` применяются контейнером `migrate` до старта `sso`
 
-```bash
-docker-compose up -d
-```
-
-или (новый синтаксис Docker):
-
-```bash
-docker compose up -d
-```
-
-После запуска:
-- Postgres поднимется и станет Healthy
-- контейнер `migrate` накатит миграции
-- контейнер `sso` стартанёт HTTP + gRPC
-
-### Проверка (Smoke)
-
-- Ping: `GET http://localhost:{HTTP_PORT}/api/v1/ping`
-- Swagger: `http://localhost:{HTTP_PORT}/swagger/index.html`
-
----
-
-## 🧰 Запуск без Compose (ручной)
-
-### Поднять Postgres
-
-```bash
-docker run --name sso-db -e POSTGRES_PASSWORD=qwerty -p 5436:5432 -d postgres
-```
-
-### Миграции
-
+Локально:
 ```bash
 migrate -path ./migrations -database "postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable" up
 ```
 
-### Запуск сервиса
+---
 
-```bash
-go run ./cmd/sso
-```
+## ⚙️ Конфигурация (ключевое)
+
+- `HTTP_PORT`, `GRPC_PORT`
+- `POSTGRES_HOST`, `POSTGRES_EXTERNAL_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_SSL_MODE`
+- `JWT_SECRET`, `JWT_TOKEN_TTL`
+
+См. `internal/config/config.go`.
 
 ---
 
-## 🧪 Тестирование
-
-### Unit tests
-```bash
-go test ./tests/http_test
-```
-
-### Integration tests (HTTP)
-Эти тесты ожидают, что сервис уже поднят на `SSO_HTTP_BASE_URL` (по умолчанию `http://localhost:8080`).
-
-> Если вы меняете HTTP порт — задайте env:
+## ✅ Quality gates
 
 ```bash
-SSO_HTTP_BASE_URL=http://localhost:{HTTP_PORT} go test ./tests/http_integration_test
-```
-
----
-
-## 🔭 Observability (логирование)
-
-В проекте используется `slog` и кастомные хендлеры форматирования.
-
-Рекомендации:
-- выставлять ENV=prod на production
-- собирать логи в централизованное хранилище
-
----
-
-## 🧯 Troubleshooting
-
-### 1) `failed to open database: EOF`
-Чаще всего причины:
-- Postgres контейнер ещё не готов
-- проброшен неправильный порт (внутри контейнера всегда 5432)
-- неверный DSN
-
-Проверка:
-- `docker ps` — контейнер postgres должен быть Running
-- `docker logs sso-postgres` — нет бесконечных перезапусков
-
-### 2) Swagger не открывается
-Проверьте:
-- HTTP порт (`HTTP_PORT`) — туда ли вы стучитесь
-- URL: `/swagger/index.html`
-
-### 3) Интеграционные тесты HTTP не видят ping
-- Поднимите сервис заранее (compose или go run)
-- Проверьте, что `SSO_HTTP_BASE_URL` совпадает с вашим портом
-
----
-
-## 🧭 Runbook (операционные заметки)
-
-### Обновить swagger
-```bash
+go test ./...
 swag init -g internal/http/docs.go -o ./docs
 ```
 
-### Обновить миграции
-- добавить новый файл в `migrations/`
-- проверить `docker compose up -d` (migrate контейнер применит изменения)
-
 ---
 
-## 🔒 Безопасность и best practices
+## 🧑‍💻 API без боли: шпаргалка для Frontend и Backend
 
-- В проде не используйте дефолтный `JWT_SECRET`.
-- Пароль хранится в виде bcrypt hash.
-- Включайте TLS на периметре (ingress/reverse proxy).
+Ниже — **коротко по каждой ручке**: что делает, что отправлять, что получать.
 
----
+### Общие правила (очень важно)
 
-## 📜 Лицензия
-См. репозиторий проекта.
+**Base URL**
+- Локально через compose: `http://localhost:{HTTP_PORT}`
 
----
+**JSON**
+- Всегда ставьте заголовок: `Content-Type: application/json`
 
-## 🧾 Контракты API: правила и соглашения (важно для фронта)
+**JWT для приватных методов**
+- Передавайте JWT так:
+  - `Authorization: Bearer {JWT}`
 
-### 1) Формат ошибок
-Сервис возвращает единый формат ошибки:
-
+**Единый формат ошибки**
 ```json
-{
-  "error": "human readable message"
+{ "error": "message" }
+```
+
+---
+
+### 1) Healthcheck
+
+#### `GET /api/v1/ping`
+- **Зачем**: проверить, что HTTP сервис жив.
+- **Что отправлять**: ничего.
+- **Что получишь**: `200 OK` + `{ "message": "pong" }`.
+
+Frontend: используйте для health-check в dev окружении.
+
+---
+
+### 2) Auth
+
+#### `POST /api/v1/register`
+- **Зачем**: создать нового пользователя.
+- **Тело запроса**:
+```json
+{ "login": "alice", "password": "StrongPass123", "email": "alice@example.com", "fullName": "Alice Doe" }
+```
+- **Успех**: `200 OK`
+```json
+{ "userId": 123 }
+```
+- **Типовые ошибки**:
+  - `400` — невалидный JSON или не прошла валидация (например пароль < 8)
+  - `409` — пользователь уже существует
+
+Frontend совет:
+- показывайте `error` из ответа пользователю;
+- пароль делайте минимум 8 символов.
+
+---
+
+#### `POST /api/v1/login`
+- **Зачем**: получить JWT.
+- **Тело запроса**:
+```json
+{ "appId": 1, "login": "alice", "password": "StrongPass123" }
+```
+- **Успех**: `200 OK`
+```json
+{ "token": "{jwt}" }
+```
+- **Типовые ошибки**:
+  - `400` — невалидный JSON/валидация
+  - `401` — неверный логин/пароль
+
+Frontend совет:
+- храните JWT в памяти/secure storage (для браузера часто: httpOnly cookie на периметре; если храните в localStorage — осознавайте XSS риски).
+
+---
+
+### 3) User (private)
+
+> Для всех ручек ниже требуется заголовок `Authorization: Bearer {JWT}`.
+
+#### `GET /api/v1/user/is_admin/:id`
+- **Зачем**: узнать, является ли пользователь админом.
+- **Параметры**: `id` в path.
+- **Успех**: `200 OK`
+```json
+{ "isAdmin": true }
+```
+- **Ошибки**:
+  - `401` — нет/невалидный токен
+  - `403` — вы не admin и пытаетесь проверить не себя
+  - `404` — пользователь не найден
+
+---
+
+#### `GET /api/v1/user/info/:id`
+- **Зачем**: получить профиль пользователя.
+- **Параметры**: `id` в path.
+- **Успех**: `200 OK` (пример)
+```json
+{ "userId": 123, "login": "alice", "email": "alice@example.com", "fullName": "Alice Doe", "isAdmin": false }
+```
+- **Ошибки**:
+  - `401` — нет/невалидный токен
+  - `403` — не admin и запрашиваете не себя
+  - `404` — пользователь не найден
+
+---
+
+#### `GET /api/v1/user/info`
+- **Зачем**: список всех пользователей.
+- **Успех**: `200 OK`
+```json
+{ "users": [ {"userId": 1, "login": "root", "email": "root@local", "fullName": "Root", "isAdmin": true} ] }
+```
+- **Ошибки**:
+  - `401` — нет/невалидный токен
+  - `403` — требуется admin
+
+---
+
+#### `POST /api/v1/user/update_token`
+- **Зачем**: обновить токен (refresh) для приложения.
+- **Тело запроса**:
+```json
+{ "appId": 1 }
+```
+- **Успех**: `200 OK`
+```json
+{ "token": "{newJwt}" }
+```
+- **Ошибки**:
+  - `401` — нет/невалидный токен
+  - `400` — невалидный JSON
+
+Frontend совет:
+- если вы используете этот endpoint как refresh, заменяйте сохранённый токен на новый сразу.
+
+---
+
+#### `PUT /api/v1/user/` (update password)
+- **Зачем**: смена пароля (сам себе или admin).
+- **Тело запроса**:
+```json
+{ "userId": 123, "newPassword": "NewStrongPass123" }
+```
+- **Успех**: `200 OK`
+```json
+{ "message": "Password updated" }
+```
+- **Ошибки**:
+  - `401` — нет/невалидный токен
+  - `403` — не admin и пытаетесь сменить пароль другому
+
+---
+
+#### `DELETE /api/v1/user/` (remove user)
+- **Зачем**: удалить пользователя (сам себя или admin).
+- **Тело запроса**:
+```json
+{ "userId": 123 }
+```
+- **Успех**: `200 OK`
+```json
+{ "message": "User deleted" }
+```
+- **Ошибки**:
+  - `401` — нет/невалидный токен
+  - `403` — не admin и пытаетесь удалить другого
+
+---
+
+## 🧩 Примеры для Frontend (JS)
+
+### Базовый helper
+```js
+const BASE = `http://localhost:${process.env.HTTP_PORT ?? 8081}`;
+
+async function api(path, { method = 'GET', token, body } = {}) {
+  const headers = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const msg = data?.error ?? `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return data;
 }
 ```
 
-Рекомендации фронту:
-- не парсить текст ошибки, ориентируйтесь на HTTP status code
-- текст ошибки используйте только для UI/логирования
+### Register → Login → Profile
+```js
+const reg = await api('/api/v1/register', {
+  method: 'POST',
+  body: { login: 'alice', password: 'StrongPass123', email: 'alice@example.com', fullName: 'Alice Doe' }
+});
 
-### 2) Content-Type
-- Все JSON запросы отправляйте с заголовком `Content-Type: application/json`
+const login = await api('/api/v1/login', {
+  method: 'POST',
+  body: { appId: 1, login: 'alice', password: 'StrongPass123' }
+});
 
-### 3) Authorization
-- для приватных эндпоинтов добавляйте `Authorization: Bearer {JWT}`
+const me = await api(`/api/v1/user/info/${reg.userId}`, {
+  method: 'GET',
+  token: login.token,
+});
 
-### 4) Валидации
-- валидация реализована через `go-playground/validator`
-- поля с `validate:"required"` должны быть обязательно заполнены
-- min-ограничения применяются только при наличии значения
-
----
-
-## 🔑 JWT: структура, сроки жизни, best practices
-
-### Что лежит внутри токена
-Точный набор claim-ов зависит от реализации JWT сервиса, но логика проекта опирается на:
-- `uid` (int64)
-- `app_id` (int32)
-- `is_admin` (bool)
-- `exp` (timestamp)
-
-### TTL
-TTL задаётся через `JWT_TOKEN_TTL`.
-
-Рекомендации:
-- для прод окружения делайте TTL коротким (например, 15m–2h)
-- если нужно «долго жить» — добавляйте refresh механизм на периметре
-
----
-
-## 🧩 Взаимодействие сервисов (схема в стиле "Consumer → Router")
-
-SSO выступает как централизованный провайдер идентичности.
-Клиенты проходят логин/регистрацию по HTTP, а внутренние сервисы используют gRPC для быстрых проверок прав.
-
-```mermaid
-graph TD
-
-  subgraph "External Ecosystem"
-    Web[Frontend / Web]
-    Mobile[Mobile]
-  end
-
-  subgraph "Internal Ecosystem"
-    A[Service A]
-    B[Service B]
-  end
-
-  subgraph "SSO Service"
-    HTTP[HTTP API (Gin)]
-    GRPC[gRPC API]
-    MW[JWT Middleware]
-    Auth[Auth Service]
-    UserSvc[User Service]
-    JwtSvc[JWT Service]
-    Cache[(In-memory Cache)]
-    DB[(PostgreSQL)]
-  end
-
-  Web -->|login/register (JSON)| HTTP
-  Mobile -->|login/register (JSON)| HTTP
-
-  HTTP --> MW
-  MW --> Auth
-
-  A -->|Verify/IsAdmin (gRPC)| GRPC
-  B -->|Verify/IsAdmin (gRPC)| GRPC
-
-  GRPC --> Auth
-
-  Auth --> JwtSvc
-  Auth --> Cache
-  Cache --> DB
-  Auth --> DB
-
-  UserSvc --> DB
+console.log(me);
 ```
 
 ---
 
-## 🗄️ Миграции: жизненный цикл схемы БД
+## 🧰 Примеры для Backend
 
-Миграции лежат в `migrations/`.
+### Вариант 1: Go (gRPC) — verify token
 
-### При запуске через docker-compose
-Контейнер `migrate` автоматически применяет миграции до старта `sso`.
+> gRPC реально удобен для внутренних сервисов: меньше накладных расходов на JSON, строгий контракт.
 
-### При локальном запуске
-Вы можете применить миграции вручную:
+```go
+package main
 
-```bash
-migrate -path ./migrations -database "postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable" up
+import (
+	"context"
+	"fmt"
+	"net"
+
+	ssov1 "github.com/BOBAvov/protos_sso/gen/go/sso"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+func main() {
+	cc, err := grpc.Dial(net.JoinHostPort("localhost", "44044"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(err)
+	}
+	defer cc.Close()
+
+	client := ssov1.NewAuthClient(cc)
+
+	resp, err := client.VerifyToken(context.Background(), &ssov1.VerifyTokenRequest{
+		Token: "{jwt}",
+		AppId: 1,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("uid=%d isAdmin=%v\n", resp.UserId, resp.IsAdmin)
+}
 ```
 
----
+### Вариант 2: Node.js (HTTP) — middleware для Express
 
-## 🧪 How-to: быстрый end-to-end сценарий руками
+```js
+import express from 'express';
 
-### 1) Запустить сервис
-Самый быстрый путь:
+const SSO = process.env.SSO_HTTP_BASE_URL ?? 'http://localhost:8081';
 
-```bash
-docker-compose up -d
+async function requireJWT(req, res, next) {
+  const auth = req.headers.authorization || '';
+  if (!auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+
+  // В этом проекте нет отдельного /verify по HTTP.
+  // Практичный вариант для Node: хранить JWT secret и валидировать токен локально,
+  // либо дергать gRPC VerifyToken из Node (через grpc-js), либо добавить HTTP /verify.
+  return next();
+}
+
+const app = express();
+app.get('/private', requireJWT, (req, res) => res.json({ ok: true }));
+app.listen(3000);
 ```
 
-### 2) Зарегистрировать пользователя
-`POST /api/v1/register`
+### Вариант 3: Python (HTTP) — requests
 
-### 3) Войти
-`POST /api/v1/login` → получите `{jwt}`
+```py
+import os
+import requests
 
-### 4) Дёрнуть приватный endpoint
-Пример: `GET /api/v1/user/info/:id` с заголовком `Authorization: Bearer {jwt}`
+BASE = os.getenv('SSO_HTTP_BASE_URL', 'http://localhost:8081')
 
----
+# login
+r = requests.post(f'{BASE}/api/v1/login', json={'appId': 1, 'login': 'alice', 'password': 'StrongPass123'})
+r.raise_for_status()
+token = r.json()['token']
 
-## ⚡ Производительность и масштабирование (практика)
-
-### Где узкие места
-- bcrypt: сравнительно дорогая операция (на логине/регистрации)
-- Postgres: соединения/индексы/пул
-- JWT parse: дешёво, но на высоком RPS важна оптимизация аллокаций
-
-### Горизонтальное масштабирование
-Сервис можно поднимать в нескольких репликах.
-Ограничение: in-memory cache будет отдельным на каждой реплике.
-
-Если потребуется единый кэш:
-- добавьте Redis/Memcached
-- или используйте кэш только как per-instance оптимизацию (как сейчас)
-
----
-
-## 🧱 docker-compose: порты и сервисы
-
-Состав (типовой):
-- `postgres` — БД
-- `migrate` — применяет миграции
-- `sso` — приложение (HTTP + gRPC)
-
-Порты:
-- `HTTP_PORT` → HTTP API + Swagger
-- `GRPC_PORT` → gRPC
-
----
-
-## ✅ Quality gates (как проверять изменения)
-
-Минимальный набор проверок перед PR:
-
-```bash
-# формат/линт у вас может быть настроен дополнительно
-
-# бил��
-
-go test ./...
-
-# генерация swagger
-swag init -g internal/http/docs.go -o ./docs
+# user info
+uid = 123
+r = requests.get(f'{BASE}/api/v1/user/info/{uid}', headers={'Authorization': f'Bearer {token}'})
+print(r.status_code, r.json())
 ```
 
----
-
-## 📎 Приложение: где что искать в коде (быстрые ссылки)
-
-- HTTP роуты: `internal/http/server.go`
-- HTTP middleware: `internal/http/middleware.go`
-- DTO для HTTP: `internal/domain/models/http.go`
-- Сборка HTTP app: `internal/app/http/app.go`
-- gRPC app: `internal/app/grpc/app.go`
-- JWT сервис: `internal/services/jwt/*`
-- Репозитории: `internal/repository/*`
-
----
-
-## 🧾 Примечание про одну команду старта
-
-Для максимально быстрого старта достаточно:
-
-```bash
-docker-compose up -d
-```
-
-Если у вас современный Docker:
-
-```bash
-docker compose up -d
-```
+> Если хотите самый правильный backend UX: добавьте HTTP endpoint `/api/v1/verify_token` для сервисов без gRPC.
