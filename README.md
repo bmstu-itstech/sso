@@ -42,18 +42,30 @@ docker-compose up -d
 
 ```mermaid
 graph TD
-  FE[Frontend] -->|HTTP JSON| HTTP_API[HTTP API (Gin)]
-  SVC1[Service A] -->|gRPC| GRPC_API[gRPC API]
-  SVC2[Service B] -->|gRPC| GRPC_API
+  FE[Frontend]
+  A[Service A]
+  B[Service B]
 
-  HTTP_API --> MW[JWT middleware]
-  MW --> CORE[Service layer]
-  GRPC_API --> CORE
+  HTTPAPI[HTTP API]
+  GRPCAPI[gRPC API]
+  MW[JWT middleware]
+  CORE[Service layer]
+  CACHE[In-memory cache]
+  DB[(PostgreSQL)]
+  JWT[JWT service]
 
-  CORE --> CACHE[(In-memory cache)]
-  CACHE --> DB[(PostgreSQL)]
+  FE --> HTTPAPI
+  A --> GRPCAPI
+  B --> GRPCAPI
+
+  HTTPAPI --> MW
+  MW --> CORE
+  GRPCAPI --> CORE
+
+  CORE --> CACHE
+  CACHE --> DB
   CORE --> DB
-  CORE --> JWT_SVC[JWT service]
+  CORE --> JWT
 ```
 
 ### Ключевые слои
