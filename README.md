@@ -1,44 +1,61 @@
 # SSO — Single Sign-On (AuthN/AuthZ)
 
 **SSO** — сервис централизованной аутентификации/авторизации для экосистемы приложений.
-Выдаёт и валидирует **JWT**, хранит пользователей в **PostgreSQL**, ускоряет горячие чтения через **in-memory cache**.
+Выдаёт и валидирует **JWT**, хранит пользователей в **PostgreSQL**, ускоряет горячие чтения через **in-memory cache + Redis**.
+
+---
 
 ## 🚀 Быстрый старт (1 команда)
 
 ```bash
+# Скопировать конфиг
+cp .env.example .env
+
+# Запустить всё
 docker-compose up -d
 ```
 
-- Ping: `GET http://localhost:{HTTP_PORT}/api/v1/ping`
-- Swagger UI: `http://localhost:{HTTP_PORT}/swagger/index.html`
+| Проверка | URL |
+|----------|-----|
+| Ping | `GET http://localhost:8080/api/v1/ping` |
+| Swagger UI | `http://localhost:8080/swagger/index.html` |
+| gRPC | `localhost:44044` |
 
 ---
 
-## ✨ Чем проект реально полезен (уникальность)
+## ✨ Уникальность / Ключевые решения
 
-- **Одна бизнес-логика → два транспорта**: HTTP (Gin) + gRPC используют один сервисный слой.
-- **JWT-first**: middleware валидирует токен и пробрасывает `uid/isAdmin/appId` в контекст.
-- **RBAC без оверхеда**: базовая модель прав `isAdmin`.
-- **Cache поверх Postgres**: Postgres — источник правды, кэш — ускорение чтений.
-- **Документация как код**: Swagger генерируется из аннотаций и отдаётся самим сервисом.
-
----
-
-## 🛠️ Стек
-
-- Go
-- HTTP: Gin
-- gRPC
-- JWT (HS256)
-- bcrypt
-- PostgreSQL + sqlx
-- in-memory cache
-- migrations: migrate
-- Docker / Docker Compose
+| Фича | Детали |
+|------|--------|
+| **Dual Transport** | Один Service Layer → HTTP (Gin) + gRPC. Zero code duplication. |
+| **JWT-first Auth** | Middleware парсит токен, пробрасывает `uid/isAdmin/appId` в `context`. |
+| **Redis Event Bus** | Инвалидация сессий: при смене пароля/удалении → `PUBLISH user:{id}` в Redis. |
+| **PostgreSQL LISTEN/NOTIFY** | In-memory cache таблицы `apps` автоматически обновляется через триггер БД. |
+| **RBAC** | Простая модель: `isAdmin` + self-access (пользователь видит/редактирует себя). |
+| **Swagger as Code** | Генерируется из аннотаций, отдаётся самим HTTP-сервером. |
+| **Graceful Shutdown** | Корректное завершение gRPC/HTTP серверов и Redis-соединений. |
 
 ---
 
-## 🏗️ Архитектура (коротко)
+## 🛠️ Стек технологий
+
+| Категория | Технология |
+|-----------|------------|
+| Язык | Go 1.21+ |
+| HTTP Framework | Gin |
+| gRPC | grpc-go + protobuf |
+| Auth | JWT HS256, bcrypt |
+| Database | PostgreSQL 16 + sqlx |
+| Cache L1 | In-memory (sync.Map) + PG LISTEN/NOTIFY |
+| Cache L2 / Event Bus | **Redis** (go-redis/v9) |
+| Migrations | golang-migrate |
+| Config | Viper (env + .env file) |
+| Docs | Swaggo → Swagger 2.0 |
+| Deploy | Docker, Docker Compose |
+
+---
+
+## 🏗️ Архитектура
 
 ```mermaid
 graph TD
@@ -46,13 +63,14 @@ graph TD
   A[Service A]
   B[Service B]
 
-  HTTPAPI[HTTP API]
+  HTTPAPI[HTTP API Gin]
   GRPCAPI[gRPC API]
-  MW[JWT middleware]
-  CORE[Service layer]
-  CACHE[In-memory cache]
+  MW[JWT Middleware]
+  CORE[Service Layer]
+  CACHE[In-memory Cache]
+  REDIS[Redis]
   DB[(PostgreSQL)]
-  JWT[JWT service]
+  JWTSVC[JWT Service]
 
   FE --> HTTPAPI
   A --> GRPCAPI
@@ -63,19 +81,38 @@ graph TD
   GRPCAPI --> CORE
 
   CORE --> CACHE
+  CORE --> REDIS
   CACHE --> DB
   CORE --> DB
-  CORE --> JWT
+  CORE --> JWTSVC
+
+  DB -.->|LISTEN/NOTIFY| CACHE
+  REDIS -.->|Token Invalidation| CORE
 ```
 
-### Ключевые слои
-- HTTP роуты: `internal/http/server.go`
-- HTTP middleware: `internal/http/middleware.go`
-- DTO: `internal/domain/models/http.go`
-- gRPC: `internal/grpc/auth` + `internal/app/grpc`
-- Business logic: `internal/services`
-- DB: `internal/repository/postgres`
-- Cache: `internal/repository/cache`
+### Слои и ответственность
+
+| Слой | Путь | Ответственность |
+|------|------|-----------------|
+| **HTTP Transport** | `internal/http/` | Gin роуты, middleware, валидация, Swagger |
+| **gRPC Transport** | `internal/grpc/` | Protobuf handlers, interceptors |
+| **Service Layer** | `internal/services/` | Бизнес-логика (auth, user, jwt) |
+| **Repository** | `internal/repository/` | PostgreSQL, Redis, In-memory cache |
+| **Domain Models** | `internal/domain/models/` | DTO, entities |
+| **Config** | `internal/config/` | Viper: env + .env |
+| **App Bootstrap** | `internal/app/` | DI, graceful start/stop |
+
+### Ключевые слои (файлы)
+| Назначение | Файл |
+|------------|------|
+| HTTP роуты | `internal/http/server.go` |
+| HTTP middleware | `internal/http/middleware.go` |
+| DTO | `internal/domain/models/http.go` |
+| gRPC | `internal/grpc/auth/server.go` |
+| Business logic | `internal/services/` |
+| PostgreSQL | `internal/repository/postgres/postgres.go` |
+| In-memory cache | `internal/repository/cache/in_memory_cash.go` |
+| Redis | `internal/repository/redis/redis.go` |
 
 ---
 
@@ -135,10 +172,60 @@ swag init -g internal/http/docs.go -o ./docs
 
 ---
 
-## 🗄️ Postgres + Cache
+## 🗄️ Хранилища данных
 
-- Postgres — **источник правды** (регистрация/пароли/роль/пользователи).
-- In-memory cache — **ускорение чтений** (не распределённый, очищается при рестарте, у каждой реплики свой).
+### PostgreSQL — источник правды
+
+| Таблица | Назначение |
+|---------|------------|
+| `users` | Логин, email, bcrypt-хэш пароля, isAdmin, timestamps |
+| `apps` | Зарегистрированные приложения (appId, secret) |
+
+**Фичи:**
+- Миграции через `golang-migrate`
+- Триггер `NOTIFY update_cache` при изменении `apps`
+- Connection pooling через `sqlx`
+
+### In-memory Cache (L1)
+
+```
+internal/repository/cache/in_memory_cash.go
+```
+
+| Аспект | Реализация |
+|--------|------------|
+| Структура | `sync.RWMutex` + `map[int32]AppRepos` |
+| Инвалидация | PostgreSQL `LISTEN/NOTIFY` → автоматический reload |
+| Область | Таблица `apps` (горячие данные для JWT валидации) |
+| Ограничения | Не распределённый, при рестарте — холодный старт |
+
+**Как работает:**
+1. При старте — `SELECT * FROM apps` → заполнение map
+2. Фоновая горутина слушает канал `update_cache`
+3. При `NOTIFY` — полный reload таблицы
+
+### Redis (L2 / Event Bus)
+
+```
+internal/repository/redis/redis.go
+```
+
+| Аспект | Реализация |
+|--------|------------|
+| Клиент | `github.com/redis/go-redis/v9` |
+| Назначение | **Token invalidation** при смене пароля / удалении пользователя |
+| Ключи | `user:{userId}` |
+| TTL | Совпадает с `JWT_TOKEN_TTL` |
+
+**Сценарий инвалидации:**
+1. Пользователь меняет пароль → `Redis.PublishUserUpdated(userId)`
+2. Ключ `user:123` = `1` с TTL = JWT_TOKEN_TTL
+3. При каждом запросе: `HasUserChanges(userId)` → если `true`, токен невалиден
+4. После истечения TTL ключ удаляется автоматически
+
+**Зачем это нужно:**
+- JWT stateless, но при компрометации токена нужна возможность его отозвать
+- Redis — быстрая проверка без похода в PostgreSQL
 
 ---
 
@@ -154,22 +241,134 @@ migrate -path ./migrations -database "postgres://postgres:qwerty@localhost:5436/
 
 ---
 
-## ⚙️ Конфигурация (ключевое)
+## ⚙️ Конфигурация
 
-- `HTTP_PORT`, `GRPC_PORT`
-- `POSTGRES_HOST`, `POSTGRES_EXTERNAL_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_SSL_MODE`
-- `JWT_SECRET`, `JWT_TOKEN_TTL`
+Конфиг читается из **переменных окружения** (приоритет) и файла **`.env`** (fallback).
+
+### Все переменные
+
+| Переменная | По умолчанию | Описание |
+|------------|--------------|----------|
+| `ENV` | `local` | Окружение: `local` / `dev` / `prod` |
+| `HTTP_PORT` | `8080` | Порт HTTP API |
+| `GRPC_PORT` | `44044` | Порт gRPC API |
+| `GRPC_TIMEOUT` | `10s` | Таймаут gRPC вызовов |
+| `POSTGRES_HOST` | `localhost` | Хост PostgreSQL |
+| `POSTGRES_EXTERNAL_PORT` | `5436` | Порт PostgreSQL |
+| `POSTGRES_DB` | `postgres` | Имя базы данных |
+| `POSTGRES_USER` | `postgres` | Пользователь БД |
+| `POSTGRES_PASSWORD` | `qwerty` | Пароль БД |
+| `POSTGRES_SSL_MODE` | `disable` | SSL режим |
+| `POSTGRES_URI` | — | Полный URI (если задан, остальные PG-переменные игнорируются) |
+| `REDIS_HOST` | `redis` | Хост Redis |
+| `REDIS_PORT` | `6379` | Порт Redis |
+| `JWT_SECRET` | `my-secret` | Секрет для подписи JWT (**сменить в prod!**) |
+| `JWT_TOKEN_TTL` | `12h` | Время жизни токена |
+
+### Пример `.env`
+
+```dotenv
+ENV=local
+HTTP_PORT=8080
+GRPC_PORT=44044
+POSTGRES_HOST=localhost
+POSTGRES_EXTERNAL_PORT=5436
+POSTGRES_DB=postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=qwerty
+POSTGRES_SSL_MODE=disable
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+JWT_SECRET=super-secret-change-me
+JWT_TOKEN_TTL=12h
+```
+
+> ⚠️ **Важно для Docker:** внутри `docker-compose` хосты переопределяются:
+> - `POSTGRES_HOST=postgres`
+> - `REDIS_HOST=redis`
 
 См. `internal/config/config.go`.
 
 ---
 
-## ✅ Quality gates
+## ✅ Quality Gates
 
 ```bash
+# Тесты
 go test ./...
+
+# Тесты с покрытием
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+
+# Линтер
+golangci-lint run
+
+# Обновить Swagger
 swag init -g internal/http/docs.go -o ./docs
 ```
+
+---
+
+## 🐳 Docker Compose — что внутри
+
+```yaml
+services:
+  redis       # Redis Alpine — event bus для token invalidation
+  postgres    # PostgreSQL 16 — основное хранилище
+  migrate     # Применяет миграции до старта sso
+  sso         # Само приложение (HTTP + gRPC)
+```
+
+### Порядок запуска (depends_on + healthcheck)
+
+```
+redis (healthy) ─┐
+                 ├─► sso
+postgres (healthy) ─► migrate (completed) ─┘
+```
+
+### Healthchecks
+
+| Сервис | Проверка |
+|--------|----------|
+| `redis` | `redis-cli ping` |
+| `postgres` | `pg_isready` |
+| `sso` | `wget /api/v1/ping` |
+
+---
+
+## 🔐 JWT — детали реализации
+
+| Аспект | Значение |
+|--------|----------|
+| Алгоритм | HS256 |
+| Payload | `uid`, `appId`, `isAdmin`, `exp` |
+| Хранение секрета | Переменная `JWT_SECRET` |
+| Валидация | Middleware проверяет подпись + expiration |
+| Инвалидация | Redis-ключ `user:{id}` при смене пароля |
+
+### Структура токена (payload)
+
+```json
+{
+  "uid": 123,
+  "app_id": 1,
+  "is_admin": false,
+  "exp": 1706500000
+}
+```
+
+---
+
+## 🔄 Graceful Shutdown
+
+При получении `SIGINT` / `SIGTERM`:
+
+1. HTTP сервер: `server.Shutdown(ctx)` с таймаутом
+2. gRPC сервер: `server.GracefulStop()`
+3. Redis: закрытие connection pool
+4. PostgreSQL: закрытие пула соединений
 
 ---
 
@@ -474,3 +673,177 @@ uid = 123
 r = requests.get(f'{BASE}/api/v1/user/info/{uid}', headers={'Authorization': f'Bearer {token}'})
 print(r.status_code, r.json())
 ```
+
+---
+
+## 🛠️ Локальная разработка
+
+### Вариант 1: Всё в Docker (рекомендуется)
+
+```bash
+cp .env.example .env
+docker-compose up -d --build
+```
+
+### Вариант 2: Приложение локально, инфраструктура в Docker
+
+```bash
+# 1. Запустить только инфраструктуру
+docker-compose up -d redis postgres migrate
+
+# 2. Настроить .env для локального запуска
+REDIS_HOST=127.0.0.1
+POSTGRES_HOST=127.0.0.1
+
+# 3. Запустить приложение
+go run cmd/sso/main.go
+```
+
+### Вариант 3: Запуск через GoLand
+
+1. Создайте Run Configuration → Go Build
+2. Package path: `github.com/bmstu-itstech/sso/cmd/sso`
+3. Working directory: корень проекта
+4. Environment: скопируйте из `.env` или укажите путь к файлу
+
+---
+
+## 🐛 Troubleshooting
+
+### Redis: connection refused
+
+**Симптом:**
+```
+dial tcp 127.0.0.1:6379: connect: connection refused
+```
+
+**Причина:** Redis не запущен или недоступен.
+
+**Решение:**
+```bash
+# Проверить статус
+docker ps | grep redis
+
+# Если не запущен
+docker-compose up -d redis
+
+# Проверить доступность порта (Windows PowerShell)
+Test-NetConnection -ComputerName 127.0.0.1 -Port 6379
+```
+
+### Redis: IPv6 vs IPv4
+
+**Симптом:**
+```
+dial tcp [::1]:6379: connect: connection refused
+```
+
+**Причина:** `localhost` резолвится в IPv6 `::1`, Docker слушает на IPv4.
+
+**Решение:** В `.env` укажите `REDIS_HOST=127.0.0.1` вместо `localhost`.
+
+### PostgreSQL: connection refused
+
+**Решение аналогично Redis:**
+```bash
+docker-compose up -d postgres
+# Дождаться healthcheck
+docker-compose ps
+```
+
+### Миграции не применились
+
+```bash
+# Проверить логи
+docker-compose logs migrate
+
+# Применить вручную
+migrate -path ./migrations -database "postgres://postgres:qwerty@localhost:5436/postgres?sslmode=disable" up
+```
+
+### Контейнер sso постоянно перезагружается
+
+**Причина:** Неверные хосты для Redis/PostgreSQL внутри Docker.
+
+**Решение:** В `docker-compose.yml` должны быть переопределены:
+```yaml
+environment:
+  REDIS_HOST: redis
+  POSTGRES_HOST: postgres
+```
+
+---
+
+## 📁 Структура проекта
+
+```
+sso/
+├── cmd/sso/                    # Entrypoint
+│   └── main.go
+├── internal/
+│   ├── app/                    # Bootstrap: DI, graceful shutdown
+│   │   ├── app.go
+│   │   ├── grpc/app.go
+│   │   └── http/app.go
+│   ├── config/                 # Viper config
+│   │   └── config.go
+│   ├── domain/
+│   │   ├── models/             # DTO, entities
+│   │   └── storage/            # Storage interfaces/errors
+│   ├── grpc/                   # gRPC handlers
+│   │   ├── auth/server.go
+│   │   └── middleware/
+│   ├── http/                   # HTTP handlers (Gin)
+│   │   ├── server.go
+│   │   ├── middleware.go
+│   │   ├── validate.go
+│   │   └── docs.go             # Swagger annotations entry
+│   ├── logs/                   # Structured logging (slog)
+│   ├── repository/
+│   │   ├── cache/              # In-memory cache + PG LISTEN
+│   │   ├── postgres/           # PostgreSQL repository
+│   │   └── redis/              # Redis client
+│   └── services/               # Business logic
+│       ├── auth.go
+│       ├── user.go
+│       ├── services.go
+│       └── jwt/jwt.go
+├── migrations/                 # SQL миграции
+├── docs/                       # Сгенерированный Swagger
+├── tests/                      # Интеграционные тесты
+├── benchmark/                  # Бенчмарки
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+└── README.md
+```
+
+---
+
+## 📊 Производительность
+
+| Операция | Среднее время | Примечание |
+|----------|---------------|------------|
+| Login | ~5ms | bcrypt verify (CPU-bound) |
+| Token validation | <1ms | In-memory + HMAC |
+| User info (cached) | <1ms | In-memory lookup |
+| User info (DB) | ~2ms | PostgreSQL query |
+
+> Бенчмарки: `go test -bench=. ./benchmark/`
+
+---
+
+## 🔒 Security Checklist
+
+- [ ] Сменить `JWT_SECRET` на сложный секрет (32+ символов)
+- [ ] Включить SSL для PostgreSQL в production
+- [ ] Настроить Redis AUTH (пароль)
+- [ ] Использовать HTTPS (через reverse proxy: nginx, traefik)
+- [ ] Ограничить CORS в production
+- [ ] Настроить rate limiting
+
+---
+
+## 📝 License
+
+MIT

@@ -24,7 +24,7 @@ ENV GIN_MODE=release
 COPY --from=builder /out/sso /app/sso
 
 # Порты по умолчанию (HTTP + gRPC)
-EXPOSE 8081
+EXPOSE 8080
 EXPOSE 44044
 
 # Запуск

@@ -34,7 +34,9 @@ func TestLogin_HappyPath(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var resp models.LoginResponse
+
 	st.DecodeJSON(rr, &resp)
+	t.Logf("resp=%s", resp.Token)
 	require.Equal(t, "jwt-token", resp.Token)
 	require.Equal(t, 1, st.Auth.LoginCalls)
 }

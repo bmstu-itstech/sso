@@ -13,7 +13,7 @@ import (
 )
 
 func NewAppCache(cfg config.Config) (*AppCache, error) {
-	connectionString := cfg.GetPostgresUrl()
+	connectionString := cfg.GetPostgresPath()
 	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {
 		return nil, err

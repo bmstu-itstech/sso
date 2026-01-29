@@ -18,8 +18,13 @@ type Config struct {
 	Postgres PostgresConfig
 	JWT      JWTConfig
 	HTTP     HttpConfig
+	Redis    RedisConfig
 }
 
+type RedisConfig struct {
+	Port string
+	Host string
+}
 type GRPCConfig struct {
 	Port    int
 	Timeout time.Duration
@@ -90,6 +95,10 @@ func GetConfig() *Config {
 			SSLMode:  viper.GetString("POSTGRES_SSL_MODE"),
 			Url:      viper.GetString("POSTGRES_URI"),
 		},
+		Redis: RedisConfig{
+			Host: viper.GetString("REDIS_HOST"),
+			Port: viper.GetString("REDIS_PORT"),
+		},
 		JWT: JWTConfig{
 			Secret:   viper.GetString("JWT_SECRET"),
 			TokenTTL: viper.GetDuration("JWT_TOKEN_TTL"),
@@ -97,7 +106,7 @@ func GetConfig() *Config {
 	}
 }
 
-func (c *Config) GetPostgresUrl() (connectionString string) {
+func (c *Config) GetPostgresPath() (connectionString string) {
 	cfg := c.Postgres
 	if cfg.Url != "" {
 		connectionString = cfg.Url

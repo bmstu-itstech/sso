@@ -23,7 +23,7 @@ type Repository struct {
 func NewPostgresDB(cfg config.Config) (Repository, error) {
 	const op = "repository.NewPostgresDB"
 
-	connectionString := cfg.GetPostgresUrl()
+	connectionString := cfg.GetPostgresPath()
 	db, err := sqlx.Open("postgres", connectionString)
 	if err != nil {
 		return Repository{}, fmt.Errorf("%w: %s", err, op)

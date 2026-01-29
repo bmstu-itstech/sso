@@ -1,4 +1,17 @@
 services:
+  redis:
+    image: redis:alpine
+    container_name: sso-redis
+    ports:
+      - "${REDIS_EXTERNAL_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sso-network
+    restart: unless-stopped
   postgres:
     image: postgres:16-alpine3.18
     container_name: sso-postgres
@@ -45,15 +58,15 @@ services:
       - .env
     environment:
       POSTGRES_URI: ""
-
       POSTGRES_HOST: postgres
-
       POSTGRES_EXTERNAL_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
-      - "${GRPC_PORT:-8080}:${GRPC_PORT:-8080}"
-      - "${HTTP_PORT:-8081}:${HTTP_PORT:-8081}"
+      - "${GRPC_PORT:-44044}:${GRPC_PORT:-44044}"
+      - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:${HTTP_PORT:-8081}/api/v1/ping >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${HTTP_PORT:-8080}/api/v1/ping >/dev/null 2>&1 || exit 1"]
       interval: 5s
       retries: 10
       start_period: 10s
@@ -63,6 +76,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     networks:
       - sso-network
     restart: unless-stopped
